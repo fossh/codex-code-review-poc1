@@ -19,7 +19,7 @@ on:
 
 jobs:
   build-ami:
-    if: ${{ !secrets.CODEX_EXISTING_INSTANCE_ID && !vars.CODEX_EXISTING_INSTANCE_ID }}
+    if: ${{ !vars.CODEX_EXISTING_INSTANCE_ID }}
     runs-on: ubuntu-latest
     environment: dev
     permissions:
