@@ -350,6 +350,68 @@ jobs:
           scp "${SSH_OPTS[@]}" "$GITHUB_TOKEN_FILE" \
             "$SSH_USER@$PUBLIC_IP:$REMOTE_WORKDIR/.github/tmp/github_token.txt" >/dev/null
 
+          log "Cloning PR repo on remote"
+          ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "REMOTE_WORKDIR='$REMOTE_WORKDIR' bash -s" <<'REMOTE_CLONE'
+          set -euo pipefail
+          cd "$REMOTE_WORKDIR"
+
+          python3 - <<'PY' > .github/tmp/pr_meta.sh
+          import json
+          from pathlib import Path
+
+          ctx = json.loads(Path(".github/tmp/github_context.json").read_text())
+          event = ctx.get("event") or {}
+          pr = event.get("pull_request") or {}
+
+          owner_repo = ctx.get("repository") or ""
+          if not owner_repo:
+              owner = ctx.get("repository_owner") or event.get("repository", {}).get("owner", {}).get("login", "")
+              name = event.get("repository", {}).get("name", "")
+              owner_repo = f"{owner}/{name}" if owner and name else ""
+
+          pr_number = pr.get("number") or event.get("number")
+          base_ref = (pr.get("base") or {}).get("ref") or "dev"
+          head_sha = (pr.get("head") or {}).get("sha") or ""
+
+          def esc(value):
+              return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+          print(f'OWNER_REPO="{esc(owner_repo)}"')
+          print(f'PR_NUMBER="{esc(pr_number or "")}"')
+          print(f'BASE_REF="{esc(base_ref)}"')
+          print(f'HEAD_SHA="{esc(head_sha)}"')
+          PY
+
+          # shellcheck disable=SC1091
+          source .github/tmp/pr_meta.sh
+
+          if [[ -z "$OWNER_REPO" ]]; then
+            echo "Missing repository info in github_context.json" >&2
+            exit 1
+          fi
+
+          TOKEN="$(cat .github/tmp/github_token.txt)"
+          CLONE_URL="https://x-access-token:${TOKEN}@github.com/${OWNER_REPO}.git"
+
+          if [[ ! -d repo/.git ]]; then
+            git clone "$CLONE_URL" repo
+          fi
+
+          cd repo
+          git remote set-url origin "$CLONE_URL"
+          git fetch origin "$BASE_REF"
+
+          if [[ -n "$PR_NUMBER" ]]; then
+            git fetch origin "pull/${PR_NUMBER}/head:pr-head"
+            git checkout pr-head
+          elif [[ -n "$HEAD_SHA" ]]; then
+            git checkout "$HEAD_SHA"
+          fi
+
+          git remote set-url origin "https://github.com/${OWNER_REPO}.git"
+REMOTE_CLONE
+
           log "Writing AGENTS.md on remote"
           ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
             "REMOTE_WORKDIR='$REMOTE_WORKDIR' bash -s" <<'REMOTE_SETUP'
@@ -378,25 +440,42 @@ jobs:
           REMOTE_SETUP
 
           log "Running Codex review"
-          set -o pipefail
+          set +e
           ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
-            "REMOTE_WORKDIR='$REMOTE_WORKDIR' bash -s" <<'REMOTE_EOF' | tee "$REVIEW_OUT"
+            "REMOTE_WORKDIR='$REMOTE_WORKDIR' bash -s" <<'REMOTE_EOF' |& tee "$REVIEW_OUT"
           set -euo pipefail
-          cd "$REMOTE_WORKDIR"
+          source "$REMOTE_WORKDIR/.github/tmp/pr_meta.sh"
+          cd "$REMOTE_WORKDIR/repo"
 
-          codex exec -m gpt-5.2-codex \
-            --config model_reasoning_effort=high \
-            --dangerously-bypass-approvals-and-sandbox \
-            --skip-git-repo-check \
-            resume --last <<'CODE_REVIEW_INSTRUCTIONS'
+          codex review --base "origin/${BASE_REF}" - <<'CODE_REVIEW_INSTRUCTIONS'
           You are running a PR code review. Read .github/tmp/github_context.json for PR metadata.
-          Follow the instructions in AGENTS.md. If no git repo exists, clone it first using the
-          info in the context file. A token is available at .github/tmp/github_token.txt for private
-          repos; prefer https auth with that token.
+          Follow the instructions in AGENTS.md. Review only the PR diff against the base branch.
           Output a review body only: start with a one-line verdict, then bullets grouped by severity
           (Blocking, Risk, Nit), then a testing note. Do not use markdown headings or code fences.
           CODE_REVIEW_INSTRUCTIONS
-          REMOTE_EOF
+REMOTE_EOF
+          set -euo pipefail
+
+          if [[ ! -s "$REVIEW_OUT" ]]; then
+            log "Codex review output empty; retrying with codex exec."
+            set +e
+            ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+              "REMOTE_WORKDIR='$REMOTE_WORKDIR' bash -s" <<'REMOTE_RETRY' |& tee "$REVIEW_OUT"
+            set -euo pipefail
+            source "$REMOTE_WORKDIR/.github/tmp/pr_meta.sh"
+            cd "$REMOTE_WORKDIR/repo"
+            codex exec -m gpt-5.2-codex \
+              --config model_reasoning_effort=high \
+              --dangerously-bypass-approvals-and-sandbox \
+              --skip-git-repo-check \
+              <<'CODE_REVIEW_INSTRUCTIONS'
+            You are running a PR code review. Read .github/tmp/github_context.json for PR metadata.
+            Follow the instructions in AGENTS.md. Review only the PR diff against the base branch.
+            Output a review body only: start with a one-line verdict, then bullets grouped by severity
+            (Blocking, Risk, Nit), then a testing note. Do not use markdown headings or code fences.
+            CODE_REVIEW_INSTRUCTIONS
+REMOTE_RETRY
+          fi
 
           if [[ ! -s "$REVIEW_OUT" ]]; then
             log "Codex output is empty; not posting a review."
