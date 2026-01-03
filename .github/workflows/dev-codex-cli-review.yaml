@@ -4,6 +4,12 @@ on:
   pull_request:
     branches: [dev]
     types: [opened, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: string
 
 jobs:
   build-ami:
@@ -182,6 +188,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON || vars.CODEX_AUTH_JSON }}
           CODEX_ID_RSA: ${{ secrets.CODEX_ID_RSA || vars.CODEX_ID_RSA }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
           SESSION_NAME: ${{ github.event.repository.name }}-${{ github.run_id }}
           SPOT_INSTANCE_NAME: dev-aps1-ec2-codex-cli-${{ github.event.repository.name }}-${{ github.run_id }}
         run: |
@@ -191,6 +198,72 @@ jobs:
           printf '%s' "$CODEX_AUTH_JSON" > .github/tmp/auth.json
           printf '%s' "$CODEX_ID_RSA" > .github/tmp/id_rsa
           chmod 600 .github/tmp/id_rsa
+
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.request
+
+          path = ".github/tmp/github_context.json"
+          with open(path, "r", encoding="utf-8") as handle:
+              ctx = json.load(handle)
+
+          event = ctx.get("event") or {}
+          pr = event.get("pull_request")
+          if pr:
+              sys.exit(0)
+
+          token_path = ".github/tmp/github_token.txt"
+          with open(token_path, "r", encoding="utf-8") as handle:
+              token = handle.read().strip()
+
+          repo = ctx.get("repository")
+          if not repo:
+              owner = ctx.get("repository_owner") or event.get("repository", {}).get("owner", {}).get("login", "")
+              name = event.get("repository", {}).get("name", "")
+              repo = f"{owner}/{name}" if owner and name else ""
+
+          if not repo:
+              raise SystemExit("Unable to determine repository from context.")
+
+          api_url = ctx.get("api_url") or "https://api.github.com"
+          pr_number = os.environ.get("PR_NUMBER", "").strip()
+          pr_data = None
+
+          def request_json(url):
+              req = urllib.request.Request(
+                  url,
+                  headers={
+                      "Authorization": f"Bearer {token}",
+                      "Accept": "application/vnd.github+json",
+                      "User-Agent": "codex-cli-review-bot",
+                  },
+              )
+              with urllib.request.urlopen(req) as resp:
+                  return json.loads(resp.read().decode("utf-8"))
+
+          if pr_number:
+              pr_data = request_json(f"{api_url}/repos/{repo}/pulls/{pr_number}")
+          else:
+              ref_name = ctx.get("ref_name") or ctx.get("ref", "").split("/")[-1]
+              if not ref_name:
+                  raise SystemExit("Unable to determine ref name for PR lookup.")
+              owner = repo.split("/", 1)[0]
+              prs = request_json(
+                  f"{api_url}/repos/{repo}/pulls?state=open&head={owner}:{ref_name}"
+              )
+              if prs:
+                  pr_data = prs[0]
+
+          if not pr_data:
+              raise SystemExit("Unable to resolve pull request for workflow_dispatch run.")
+
+          event["pull_request"] = pr_data
+          ctx["event"] = event
+          with open(path, "w", encoding="utf-8") as handle:
+              json.dump(ctx, handle)
+          PY
 
       - name: run-codex-review
         env:
