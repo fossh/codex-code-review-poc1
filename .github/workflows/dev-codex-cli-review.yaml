@@ -128,7 +128,7 @@ jobs:
             exit 1
           fi
 
-          SSH_OPTS=(-i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15)
+          SSH_OPTS=(-i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o LogLevel=ERROR)
           SSH_USER="ubuntu"
 
           log "Waiting for ssh on $PUBLIC_IP"
@@ -404,7 +404,7 @@ jobs:
           SSH_USER="ubuntu"
           REMOTE_WORKDIR="/home/$SSH_USER/codex-work/$SESSION_NAME"
 
-          SSH_OPTS=(-i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15)
+          SSH_OPTS=(-i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o LogLevel=ERROR)
 
           log "Waiting for ssh on $PUBLIC_IP"
           for _ in {1..30}; do
@@ -522,11 +522,26 @@ jobs:
           set +e
           ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
             "REMOTE_WORKDIR='$REMOTE_WORKDIR' bash -s" <<'REMOTE_EOF' |& tee "$REVIEW_OUT"
+          SSH_STATUS=${PIPESTATUS[0]}
           set -euo pipefail
+          if [[ $SSH_STATUS -ne 0 ]]; then
+            log "Codex review failed with status $SSH_STATUS"
+            : > "$REVIEW_OUT"
+          fi
           source "$REMOTE_WORKDIR/.github/tmp/pr_meta.sh"
           cd "$REMOTE_WORKDIR/repo"
 
-          codex review --base "origin/${BASE_REF}" - <<'CODE_REVIEW_INSTRUCTIONS'
+          export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+          CODEX_BIN="$(command -v codex || true)"
+          if [[ -z "$CODEX_BIN" && -x /usr/local/bin/codex ]]; then
+            CODEX_BIN="/usr/local/bin/codex"
+          fi
+          if [[ -z "$CODEX_BIN" ]]; then
+            echo "codex not found in PATH" >&2
+            exit 1
+          fi
+
+          "$CODEX_BIN" review --base "origin/${BASE_REF}" - <<'CODE_REVIEW_INSTRUCTIONS'
           You are running a PR code review. Read .github/tmp/github_context.json for PR metadata.
           Follow the instructions in AGENTS.md. Review only the PR diff against the base branch.
           Output a review body only: start with a one-line verdict, then bullets grouped by severity
@@ -540,10 +555,24 @@ jobs:
             set +e
             ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
               "REMOTE_WORKDIR='$REMOTE_WORKDIR' bash -s" <<'REMOTE_RETRY' |& tee "$REVIEW_OUT"
+            SSH_STATUS=${PIPESTATUS[0]}
             set -euo pipefail
+            if [[ $SSH_STATUS -ne 0 ]]; then
+              log "Codex exec failed with status $SSH_STATUS"
+              : > "$REVIEW_OUT"
+            fi
             source "$REMOTE_WORKDIR/.github/tmp/pr_meta.sh"
             cd "$REMOTE_WORKDIR/repo"
-            codex exec -m gpt-5.2-codex \
+            export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+            CODEX_BIN="$(command -v codex || true)"
+            if [[ -z "$CODEX_BIN" && -x /usr/local/bin/codex ]]; then
+              CODEX_BIN="/usr/local/bin/codex"
+            fi
+            if [[ -z "$CODEX_BIN" ]]; then
+              echo "codex not found in PATH" >&2
+              exit 1
+            fi
+            "$CODEX_BIN" exec -m gpt-5.2-codex \
               --config model_reasoning_effort=high \
               --dangerously-bypass-approvals-and-sandbox \
               --skip-git-repo-check \
