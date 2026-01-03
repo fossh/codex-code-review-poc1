@@ -489,7 +489,7 @@ jobs:
           fi
 
           git remote set-url origin "https://github.com/${OWNER_REPO}.git"
-REMOTE_CLONE
+          REMOTE_CLONE
 
           log "Writing AGENTS.md on remote"
           ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
@@ -532,7 +532,7 @@ REMOTE_CLONE
           Output a review body only: start with a one-line verdict, then bullets grouped by severity
           (Blocking, Risk, Nit), then a testing note. Do not use markdown headings or code fences.
           CODE_REVIEW_INSTRUCTIONS
-REMOTE_EOF
+          REMOTE_EOF
           set -euo pipefail
 
           if [[ ! -s "$REVIEW_OUT" ]]; then
@@ -553,7 +553,7 @@ REMOTE_EOF
             Output a review body only: start with a one-line verdict, then bullets grouped by severity
             (Blocking, Risk, Nit), then a testing note. Do not use markdown headings or code fences.
             CODE_REVIEW_INSTRUCTIONS
-REMOTE_RETRY
+            REMOTE_RETRY
           fi
 
           if [[ ! -s "$REVIEW_OUT" ]]; then
