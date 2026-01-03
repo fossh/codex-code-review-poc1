@@ -375,7 +375,7 @@ jobs:
           - End with a brief testing note (what was or was not validated).
           - Do not include code fences or markdown headings.
           AGENTS
-REMOTE_SETUP
+          REMOTE_SETUP
 
           log "Running Codex review"
           set -o pipefail
@@ -396,7 +396,7 @@ REMOTE_SETUP
           Output a review body only: start with a one-line verdict, then bullets grouped by severity
           (Blocking, Risk, Nit), then a testing note. Do not use markdown headings or code fences.
           CODE_REVIEW_INSTRUCTIONS
-REMOTE_EOF
+          REMOTE_EOF
 
           if [[ ! -s "$REVIEW_OUT" ]]; then
             log "Codex output is empty; not posting a review."
@@ -485,6 +485,6 @@ REMOTE_EOF
               raise SystemExit(f"GitHub API error: {exc.code} {message}") from exc
 
           print(f"Posted review to {owner}/{repo} PR #{pr_number}")
-PY
+          PY
 
           log "Review posted successfully"
