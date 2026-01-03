@@ -562,7 +562,7 @@ jobs:
             exit 1
           fi
 
-          "$CODEX_BIN" exec -m gpt-5.2-codex \
+          timeout 10m "$CODEX_BIN" exec -m gpt-5.2-codex \
             --config model_reasoning_effort=high \
             --dangerously-bypass-approvals-and-sandbox \
             --skip-git-repo-check \
@@ -597,7 +597,7 @@ jobs:
               echo "codex not found in PATH" >&2
               exit 1
             fi
-            "$CODEX_BIN" exec -m gpt-5.2-codex \
+            timeout 10m "$CODEX_BIN" exec -m gpt-5.2-codex \
               --config model_reasoning_effort=high \
               --dangerously-bypass-approvals-and-sandbox \
               --skip-git-repo-check \
