@@ -155,6 +155,12 @@ jobs:
           fi
           ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
             "sudo ln -sf '$CODEX_PATH' /usr/local/bin/codex"
+          NODE_PATH="$(ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "sudo -iu ubuntu bash -lc 'export NVM_DIR=\"/home/ubuntu/.nvm\"; . \"/home/ubuntu/.nvm/nvm.sh\"; command -v node'")"
+          if [[ -n "$NODE_PATH" ]]; then
+            ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+              "sudo ln -sf '$NODE_PATH' /usr/local/bin/node"
+          fi
           ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
             "command -v codex"
 
