@@ -569,7 +569,7 @@ jobs:
             <<'CODE_REVIEW_INSTRUCTIONS'
           You are running a PR code review. Read .github/tmp/github_context.json for PR metadata.
           Follow the instructions in AGENTS.md. Review only the PR diff against the base branch.
-          You must output only a JSON object wrapped between lines BEGIN_REVIEW_JSON and END_REVIEW_JSON.
+          You must output only a valid JSON object wrapped between lines BEGIN_REVIEW_JSON and END_REVIEW_JSON.
           JSON schema:
           {
             "event": "COMMENT" | "REQUEST_CHANGES" | "APPROVE",
@@ -580,7 +580,7 @@ jobs:
           }
           Use paths relative to repo root. "line" is the line number in the new file (right side).
           Only include inline comments for lines that appear in the PR diff; omit uncertain ones.
-          Do not include markdown headings or code fences. No text outside the JSON block.
+          Do not include markdown headings or code fences. No text outside the JSON block. Output exactly one JSON block.
           CODE_REVIEW_INSTRUCTIONS
           REMOTE_EOF
           set -euo pipefail
@@ -614,7 +614,7 @@ jobs:
               <<'CODE_REVIEW_INSTRUCTIONS'
             You are running a PR code review. Read .github/tmp/github_context.json for PR metadata.
             Follow the instructions in AGENTS.md. Review only the PR diff against the base branch.
-            You must output only a JSON object wrapped between lines BEGIN_REVIEW_JSON and END_REVIEW_JSON.
+            You must output only a valid JSON object wrapped between lines BEGIN_REVIEW_JSON and END_REVIEW_JSON.
             JSON schema:
             {
               "event": "COMMENT" | "REQUEST_CHANGES" | "APPROVE",
@@ -625,7 +625,7 @@ jobs:
             }
             Use paths relative to repo root. "line" is the line number in the new file (right side).
             Only include inline comments for lines that appear in the PR diff; omit uncertain ones.
-            Do not include markdown headings or code fences. No text outside the JSON block.
+            Do not include markdown headings or code fences. No text outside the JSON block. Output exactly one JSON block.
           CODE_REVIEW_INSTRUCTIONS
           REMOTE_RETRY
           fi
@@ -763,7 +763,7 @@ jobs:
           def extract_review_json(raw_text):
               start_token = "BEGIN_REVIEW_JSON"
               end_token = "END_REVIEW_JSON"
-              start = raw_text.find(start_token)
+              start = raw_text.rfind(start_token)
               if start == -1:
                   raise ValueError("Missing BEGIN_REVIEW_JSON marker in codex output.")
               start += len(start_token)
@@ -773,6 +773,11 @@ jobs:
               json_text = raw_text[start:end].strip()
               if not json_text:
                   raise ValueError("Empty JSON block in codex output.")
+              first_brace = json_text.find("{")
+              last_brace = json_text.rfind("}")
+              if first_brace == -1 or last_brace == -1 or last_brace < first_brace:
+                  raise ValueError("No JSON object found inside review block.")
+              json_text = json_text[first_brace : last_brace + 1]
               return json.loads(json_text)
 
           context = load_json(context_path)
