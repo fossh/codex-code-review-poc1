@@ -1,0 +1,490 @@
+name: dev-codex-cli-review
+
+on:
+  pull_request:
+    branches: [dev]
+    types: [opened, reopened]
+
+jobs:
+  build-ami:
+    runs-on: dev-172-31-13-161-codex-cli
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || vars.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || vars.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN || vars.AWS_SESSION_TOKEN }}
+      CODEX_EC2_SUBNET_ID: ${{ secrets.CODEX_EC2_SUBNET_ID || vars.CODEX_EC2_SUBNET_ID }}
+      CODEX_EC2_SECURITY_GROUP_IDS: ${{ secrets.CODEX_EC2_SECURITY_GROUP_IDS || vars.CODEX_EC2_SECURITY_GROUP_IDS }}
+      CODEX_EC2_KEY_NAME: ${{ secrets.CODEX_EC2_KEY_NAME || vars.CODEX_EC2_KEY_NAME }}
+      CODEX_INSTANCE_TYPE: ${{ secrets.CODEX_INSTANCE_TYPE || vars.CODEX_INSTANCE_TYPE }}
+    outputs:
+      ami_id: ${{ steps.build-ami.outputs.ami_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build-codex-ami
+        id: build-ami
+        env:
+          CODEX_ID_RSA: ${{ secrets.CODEX_ID_RSA || vars.CODEX_ID_RSA }}
+        run: |
+          set -euo pipefail
+
+          if [[ -f .env ]]; then
+            set -a
+            source .env
+            set +a
+          fi
+
+          log() {
+            printf '%s\n' "[ami-build] $*"
+          }
+
+          require_cmd() {
+            local cmd="$1"
+            if ! command -v "$cmd" >/dev/null 2>&1; then
+              log "Missing required command: $cmd"
+              exit 1
+            fi
+          }
+
+          : "${CODEX_EC2_SUBNET_ID:?Missing CODEX_EC2_SUBNET_ID}"
+          : "${CODEX_EC2_SECURITY_GROUP_IDS:?Missing CODEX_EC2_SECURITY_GROUP_IDS}"
+          : "${CODEX_EC2_KEY_NAME:?Missing CODEX_EC2_KEY_NAME}"
+          : "${CODEX_INSTANCE_TYPE:?Missing CODEX_INSTANCE_TYPE}"
+          : "${CODEX_ID_RSA:?Missing CODEX_ID_RSA}"
+
+          require_cmd aws
+          require_cmd ssh
+
+          AWS_REGION="ap-south-1"
+          export AWS_REGION
+          export AWS_DEFAULT_REGION="$AWS_REGION"
+
+          BASE_AMI_ID="$(aws ssm get-parameter \
+            --name /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id \
+            --query 'Parameter.Value' --output text)"
+          if [[ -z "$BASE_AMI_ID" || "$BASE_AMI_ID" == "None" ]]; then
+            log "Failed to resolve Ubuntu base AMI."
+            exit 1
+          fi
+
+          SECURITY_GROUP_IDS="$(echo "$CODEX_EC2_SECURITY_GROUP_IDS" | tr ',' ' ' | xargs)"
+          SECURITY_GROUP_IDS_COMMA="$(echo "$SECURITY_GROUP_IDS" | tr ' ' ',')"
+
+          SSH_KEY_FILE="$(mktemp)"
+          printf '%s' "$CODEX_ID_RSA" > "$SSH_KEY_FILE"
+          chmod 600 "$SSH_KEY_FILE"
+
+          INSTANCE_ID=""
+          cleanup() {
+            if [[ -n "$INSTANCE_ID" ]]; then
+              log "Terminating builder instance: $INSTANCE_ID"
+              aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" >/dev/null
+            fi
+            rm -f "$SSH_KEY_FILE"
+          }
+          trap cleanup EXIT
+
+          log "Launching builder instance from $BASE_AMI_ID"
+          INSTANCE_ID="$(aws ec2 run-instances \
+            --image-id "$BASE_AMI_ID" \
+            --instance-type "$CODEX_INSTANCE_TYPE" \
+            --key-name "$CODEX_EC2_KEY_NAME" \
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=codex-ami-builder-${GITHUB_RUN_ID}}]" \
+            --network-interfaces "DeviceIndex=0,AssociatePublicIpAddress=true,SubnetId=$CODEX_EC2_SUBNET_ID,Groups=$SECURITY_GROUP_IDS_COMMA" \
+            --query 'Instances[0].InstanceId' --output text)"
+
+          log "Builder instance requested: $INSTANCE_ID"
+          aws ec2 wait instance-running --instance-ids "$INSTANCE_ID"
+
+          PUBLIC_IP=""
+          for _ in {1..30}; do
+            PUBLIC_IP="$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" \
+              --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)"
+            if [[ -n "$PUBLIC_IP" && "$PUBLIC_IP" != "None" ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ -z "$PUBLIC_IP" || "$PUBLIC_IP" == "None" ]]; then
+            log "Failed to obtain public IP for $INSTANCE_ID"
+            exit 1
+          fi
+
+          SSH_OPTS=(-i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15)
+          SSH_USER="ubuntu"
+
+          log "Waiting for ssh on $PUBLIC_IP"
+          for _ in {1..30}; do
+            if ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" "echo ready" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+
+          log "Installing nvm, nodejs, and codex"
+          ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "sudo apt-get update && sudo apt-get install -y curl ca-certificates git"
+          ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "sudo -iu ubuntu bash -lc 'curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash'"
+          ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "sudo -iu ubuntu bash -lc 'export NVM_DIR=\"$HOME/.nvm\"; . \"$NVM_DIR/nvm.sh\"; nvm install --lts; nvm use --lts; npm install -g @openai/codex@latest'"
+          CODEX_PATH="$(ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "sudo -iu ubuntu bash -lc 'export NVM_DIR=\"$HOME/.nvm\"; . \"$NVM_DIR/nvm.sh\"; command -v codex'")"
+          if [[ -z "$CODEX_PATH" ]]; then
+            log "codex CLI not found after install."
+            exit 1
+          fi
+          ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "sudo ln -sf '$CODEX_PATH' /usr/local/bin/codex"
+          ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "command -v codex"
+
+          AMI_NAME="codex-cli-$(date +%Y%m%d%H%M%S)"
+          AMI_ID="$(aws ec2 create-image --instance-id "$INSTANCE_ID" \
+            --name "$AMI_NAME" --no-reboot --query 'ImageId' --output text)"
+
+          log "Waiting for AMI $AMI_ID"
+          aws ec2 wait image-available --image-ids "$AMI_ID"
+
+          echo "ami_id=$AMI_ID" >> "$GITHUB_OUTPUT"
+          log "AMI ready: $AMI_ID"
+
+  codex-cli:
+    needs: build-ami
+    runs-on: dev-172-31-13-161-codex-cli
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || vars.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || vars.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN || vars.AWS_SESSION_TOKEN }}
+      CODEX_AMI_ID: ${{ needs.build-ami.outputs.ami_id }}
+      CODEX_EC2_SUBNET_ID: ${{ secrets.CODEX_EC2_SUBNET_ID || vars.CODEX_EC2_SUBNET_ID }}
+      CODEX_EC2_SECURITY_GROUP_IDS: ${{ secrets.CODEX_EC2_SECURITY_GROUP_IDS || vars.CODEX_EC2_SECURITY_GROUP_IDS }}
+      CODEX_EC2_KEY_NAME: ${{ secrets.CODEX_EC2_KEY_NAME || vars.CODEX_EC2_KEY_NAME }}
+      CODEX_INSTANCE_TYPE: ${{ secrets.CODEX_INSTANCE_TYPE || vars.CODEX_INSTANCE_TYPE }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: create-context-files
+        env:
+          GITHUB_CONTEXT: ${{ tojson(github) }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON || vars.CODEX_AUTH_JSON }}
+          CODEX_ID_RSA: ${{ secrets.CODEX_ID_RSA || vars.CODEX_ID_RSA }}
+          SESSION_NAME: ${{ github.event.repository.name }}-${{ github.run_id }}
+          SPOT_INSTANCE_NAME: dev-aps1-ec2-codex-cli-${{ github.event.repository.name }}-${{ github.run_id }}
+        run: |
+          mkdir -p .github/tmp
+          printf '%s' "$GITHUB_CONTEXT" > .github/tmp/github_context.json
+          printf '%s' "$GITHUB_TOKEN" > .github/tmp/github_token.txt
+          printf '%s' "$CODEX_AUTH_JSON" > .github/tmp/auth.json
+          printf '%s' "$CODEX_ID_RSA" > .github/tmp/id_rsa
+          chmod 600 .github/tmp/id_rsa
+
+      - name: run-codex-review
+        env:
+          SESSION_NAME: ${{ github.event.repository.name }}-${{ github.run_id }}
+          SPOT_INSTANCE_NAME: dev-aps1-ec2-codex-cli-${{ github.event.repository.name }}-${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ -f .env ]]; then
+            set -a
+            source .env
+            set +a
+          fi
+
+          log() {
+            printf '%s\n' "[codex-review] $*"
+          }
+
+          require_file() {
+            local path="$1"
+            if [[ ! -f "$path" ]]; then
+              log "Missing required file: $path"
+              exit 1
+            fi
+          }
+
+          require_cmd() {
+            local cmd="$1"
+            if ! command -v "$cmd" >/dev/null 2>&1; then
+              log "Missing required command: $cmd"
+              exit 1
+            fi
+          }
+
+          REPO_ROOT="$PWD"
+          TMP_DIR="$REPO_ROOT/.github/tmp"
+          GITHUB_CONTEXT="$TMP_DIR/github_context.json"
+          GITHUB_TOKEN_FILE="$TMP_DIR/github_token.txt"
+          AUTH_FILE="$TMP_DIR/auth.json"
+          SSH_KEY_FILE="$TMP_DIR/id_rsa"
+          REVIEW_OUT="$TMP_DIR/codex_review.txt"
+
+          : "${SESSION_NAME:?Missing SESSION_NAME}"
+          : "${SPOT_INSTANCE_NAME:?Missing SPOT_INSTANCE_NAME}"
+          : "${CODEX_AMI_ID:?Missing CODEX_AMI_ID}"
+          : "${CODEX_EC2_SUBNET_ID:?Missing CODEX_EC2_SUBNET_ID}"
+          : "${CODEX_EC2_SECURITY_GROUP_IDS:?Missing CODEX_EC2_SECURITY_GROUP_IDS}"
+          : "${CODEX_EC2_KEY_NAME:?Missing CODEX_EC2_KEY_NAME}"
+          : "${CODEX_INSTANCE_TYPE:?Missing CODEX_INSTANCE_TYPE}"
+
+          require_file "$GITHUB_CONTEXT"
+          require_file "$GITHUB_TOKEN_FILE"
+          require_file "$AUTH_FILE"
+          require_file "$SSH_KEY_FILE"
+
+          chmod 600 "$SSH_KEY_FILE"
+
+          require_cmd aws
+          require_cmd ssh
+          require_cmd scp
+          require_cmd python3
+
+          AWS_REGION="ap-south-1"
+          export AWS_REGION
+          export AWS_DEFAULT_REGION="$AWS_REGION"
+
+          SUBNET_ID="$CODEX_EC2_SUBNET_ID"
+          SECURITY_GROUP_IDS="$CODEX_EC2_SECURITY_GROUP_IDS"
+          KEY_NAME="$CODEX_EC2_KEY_NAME"
+          INSTANCE_TYPE="$CODEX_INSTANCE_TYPE"
+
+          if [[ -z "$SUBNET_ID" || -z "$SECURITY_GROUP_IDS" ]]; then
+            log "Missing network config. Set CODEX_EC2_SUBNET_ID and CODEX_EC2_SECURITY_GROUP_IDS."
+            exit 1
+          fi
+
+          if [[ -z "$KEY_NAME" || "$KEY_NAME" == "None" ]]; then
+            log "Missing EC2 key name. Set CODEX_EC2_KEY_NAME to match the ssh key."
+            exit 1
+          fi
+
+          if [[ -z "$INSTANCE_TYPE" || "$INSTANCE_TYPE" == "None" ]]; then
+            log "Missing instance type. Set CODEX_INSTANCE_TYPE."
+            exit 1
+          fi
+
+          SECURITY_GROUP_IDS="$(echo "$SECURITY_GROUP_IDS" | tr ',' ' ' | xargs)"
+          SECURITY_GROUP_IDS_COMMA="$(echo "$SECURITY_GROUP_IDS" | tr ' ' ',')"
+
+          SPOT_INSTANCE_ID=""
+          cleanup() {
+            if [[ -n "$SPOT_INSTANCE_ID" ]]; then
+              log "Terminating spot instance: $SPOT_INSTANCE_ID"
+              aws ec2 terminate-instances --instance-ids "$SPOT_INSTANCE_ID" >/dev/null
+            fi
+          }
+          trap cleanup EXIT
+
+          log "Launching spot instance in $AWS_REGION with AMI $CODEX_AMI_ID"
+          RUN_ARGS=(
+            --image-id "$CODEX_AMI_ID"
+            --instance-type "$INSTANCE_TYPE"
+            --instance-market-options "MarketType=spot"
+            --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=$SPOT_INSTANCE_NAME},{Key=Session,Value=$SESSION_NAME}]"
+            --network-interfaces "DeviceIndex=0,AssociatePublicIpAddress=true,SubnetId=$SUBNET_ID,Groups=$SECURITY_GROUP_IDS_COMMA"
+          )
+          if [[ -n "$KEY_NAME" && "$KEY_NAME" != "None" ]]; then
+            RUN_ARGS+=(--key-name "$KEY_NAME")
+          fi
+
+          SPOT_INSTANCE_ID="$(aws ec2 run-instances "${RUN_ARGS[@]}" \
+            --query 'Instances[0].InstanceId' --output text)"
+
+          log "Spot instance requested: $SPOT_INSTANCE_ID"
+          aws ec2 wait instance-running --instance-ids "$SPOT_INSTANCE_ID"
+
+          PUBLIC_IP=""
+          for _ in {1..30}; do
+            PUBLIC_IP="$(aws ec2 describe-instances --instance-ids "$SPOT_INSTANCE_ID" \
+              --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)"
+            if [[ -n "$PUBLIC_IP" && "$PUBLIC_IP" != "None" ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ -z "$PUBLIC_IP" || "$PUBLIC_IP" == "None" ]]; then
+            log "Failed to obtain public IP for $SPOT_INSTANCE_ID"
+            exit 1
+          fi
+
+          SSH_USER="ubuntu"
+          REMOTE_WORKDIR="/home/$SSH_USER/codex-work/$SESSION_NAME"
+
+          SSH_OPTS=(-i "$SSH_KEY_FILE" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15)
+
+          log "Waiting for ssh on $PUBLIC_IP"
+          for _ in {1..30}; do
+            if ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" "echo ready" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
+
+          log "Creating remote directories"
+          ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "mkdir -p ~/.codex '$REMOTE_WORKDIR/.github/tmp'"
+
+          log "Uploading auth.json"
+          scp "${SSH_OPTS[@]}" "$AUTH_FILE" "$SSH_USER@$PUBLIC_IP:~/.codex/auth.json" >/dev/null
+
+          log "Uploading github_context.json"
+          scp "${SSH_OPTS[@]}" "$GITHUB_CONTEXT" \
+            "$SSH_USER@$PUBLIC_IP:$REMOTE_WORKDIR/.github/tmp/github_context.json" >/dev/null
+
+          log "Uploading github_token.txt"
+          scp "${SSH_OPTS[@]}" "$GITHUB_TOKEN_FILE" \
+            "$SSH_USER@$PUBLIC_IP:$REMOTE_WORKDIR/.github/tmp/github_token.txt" >/dev/null
+
+          log "Writing AGENTS.md on remote"
+          ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "REMOTE_WORKDIR='$REMOTE_WORKDIR' bash -s" <<'REMOTE_SETUP'
+          set -euo pipefail
+          cat > "$REMOTE_WORKDIR/AGENTS.md" <<'AGENTS'
+          ## Codex Review Agent
+
+          You are running a pull-request code review. Focus on correctness, security, and missing tests.
+
+          ### Context
+          - PR metadata is in `.github/tmp/github_context.json`.
+          - If no git repo exists, clone it using the repo info in the context file.
+          - A GitHub token for cloning private repos is in `.github/tmp/github_token.txt`.
+
+          ### Expectations
+          - Review only the changes in this PR. If git history is available, use `git diff` against the base ref.
+          - Call out bugs, risky behavior changes, and missing tests first.
+          - Keep the review concise and actionable.
+
+          ### Output Format
+          - Start with a one-line overall verdict.
+          - Then list findings as short bullets grouped by severity: `Blocking`, `Risk`, `Nit`.
+          - End with a brief testing note (what was or was not validated).
+          - Do not include code fences or markdown headings.
+          AGENTS
+REMOTE_SETUP
+
+          log "Running Codex review"
+          set -o pipefail
+          ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
+            "REMOTE_WORKDIR='$REMOTE_WORKDIR' bash -s" <<'REMOTE_EOF' | tee "$REVIEW_OUT"
+          set -euo pipefail
+          cd "$REMOTE_WORKDIR"
+
+          codex exec -m gpt-5.2-codex \
+            --config model_reasoning_effort=high \
+            --dangerously-bypass-approvals-and-sandbox \
+            --skip-git-repo-check \
+            resume --last <<'CODE_REVIEW_INSTRUCTIONS'
+          You are running a PR code review. Read .github/tmp/github_context.json for PR metadata.
+          Follow the instructions in AGENTS.md. If no git repo exists, clone it first using the
+          info in the context file. A token is available at .github/tmp/github_token.txt for private
+          repos; prefer https auth with that token.
+          Output a review body only: start with a one-line verdict, then bullets grouped by severity
+          (Blocking, Risk, Nit), then a testing note. Do not use markdown headings or code fences.
+          CODE_REVIEW_INSTRUCTIONS
+REMOTE_EOF
+
+          if [[ ! -s "$REVIEW_OUT" ]]; then
+            log "Codex output is empty; not posting a review."
+            exit 1
+          fi
+
+          log "Posting review to GitHub"
+          python3 - <<'PY'
+          import json
+          import sys
+          import urllib.error
+          import urllib.request
+
+          context_path = ".github/tmp/github_context.json"
+          token_path = ".github/tmp/github_token.txt"
+          body_path = ".github/tmp/codex_review.txt"
+
+          def load_json(path):
+              with open(path, "r", encoding="utf-8") as handle:
+                  return json.load(handle)
+
+          def read_text(path):
+              with open(path, "r", encoding="utf-8") as handle:
+                  return handle.read().strip()
+
+          def parse_repo_info(context):
+              repo_full = context.get("repository")
+              owner = ""
+              repo = ""
+              if isinstance(repo_full, str) and "/" in repo_full:
+                  owner, repo = repo_full.split("/", 1)
+              event = context.get("event") or {}
+              if not owner:
+                  owner = (
+                      context.get("repository_owner")
+                      or event.get("repository", {}).get("owner", {}).get("login", "")
+                  )
+              if not repo:
+                  repo = event.get("repository", {}).get("name", "")
+              if not owner or not repo:
+                  raise ValueError("Unable to determine repository owner/name from context.")
+              return owner, repo
+
+          def parse_pr_info(context):
+              event = context.get("event") or {}
+              pr = event.get("pull_request") or {}
+              pr_number = pr.get("number") or event.get("number")
+              if not pr_number:
+                  raise ValueError("Unable to determine pull request number from context.")
+              commit_id = pr.get("head", {}).get("sha") or context.get("sha")
+              return int(pr_number), commit_id
+
+          context = load_json(context_path)
+          token = read_text(token_path)
+          body = read_text(body_path)
+
+          if not body:
+              raise SystemExit("Review body is empty.")
+
+          owner, repo = parse_repo_info(context)
+          pr_number, commit_id = parse_pr_info(context)
+          api_url = context.get("api_url") or "https://api.github.com"
+          url = f"{api_url}/repos/{owner}/{repo}/pulls/{pr_number}/reviews"
+
+          payload = {"body": body, "event": "COMMENT"}
+          if commit_id:
+              payload["commit_id"] = commit_id
+
+          data = json.dumps(payload).encode("utf-8")
+          headers = {
+              "Authorization": f"Bearer {token}",
+              "Accept": "application/vnd.github+json",
+              "Content-Type": "application/json",
+              "User-Agent": "codex-cli-review-bot",
+          }
+
+          request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+          try:
+              with urllib.request.urlopen(request) as response:
+                  if response.status not in (200, 201):
+                      raise SystemExit(
+                          f"GitHub API returned status {response.status}: {response.read()}"
+                      )
+          except urllib.error.HTTPError as exc:
+              message = exc.read().decode("utf-8", errors="replace")
+              raise SystemExit(f"GitHub API error: {exc.code} {message}") from exc
+
+          print(f"Posted review to {owner}/{repo} PR #{pr_number}")
+PY
+
+          log "Review posted successfully"
