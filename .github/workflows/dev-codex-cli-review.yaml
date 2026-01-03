@@ -562,12 +562,14 @@ jobs:
             exit 1
           fi
 
-          "$CODEX_BIN" review --base "origin/${BASE_REF}" - <<'CODE_REVIEW_INSTRUCTIONS'
+          REVIEW_PROMPT="$(cat <<'CODE_REVIEW_INSTRUCTIONS'
           You are running a PR code review. Read .github/tmp/github_context.json for PR metadata.
           Follow the instructions in AGENTS.md. Review only the PR diff against the base branch.
           Output a review body only: start with a one-line verdict, then bullets grouped by severity
           (Blocking, Risk, Nit), then a testing note. Do not use markdown headings or code fences.
           CODE_REVIEW_INSTRUCTIONS
+          )"
+          "$CODEX_BIN" review --base "origin/${BASE_REF}" "$REVIEW_PROMPT"
           REMOTE_EOF
           set -euo pipefail
 
