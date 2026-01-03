@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [dev]
     types: [opened, reopened, synchronize]
+  pull_request_target:
+    branches: [dev]
+    types: [opened, reopened, synchronize]
   workflow_dispatch:
     inputs:
       pr_number:
