@@ -133,9 +133,9 @@ jobs:
           ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
             "sudo -iu ubuntu bash -lc 'curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash'"
           ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
-            "sudo -iu ubuntu bash -lc 'export NVM_DIR=\"\$HOME/.nvm\"; . \"\$NVM_DIR/nvm.sh\"; nvm install --lts; nvm use --lts; npm install -g @openai/codex@latest'"
+            "sudo -iu ubuntu bash -lc 'export NVM_DIR=\"/home/ubuntu/.nvm\"; . \"/home/ubuntu/.nvm/nvm.sh\"; nvm install --lts; nvm use --lts; npm install -g @openai/codex@latest'"
           CODEX_PATH="$(ssh "${SSH_OPTS[@]}" "$SSH_USER@$PUBLIC_IP" \
-            "sudo -iu ubuntu bash -lc 'export NVM_DIR=\"\$HOME/.nvm\"; . \"\$NVM_DIR/nvm.sh\"; command -v codex'")"
+            "sudo -iu ubuntu bash -lc 'export NVM_DIR=\"/home/ubuntu/.nvm\"; . \"/home/ubuntu/.nvm/nvm.sh\"; command -v codex'")"
           if [[ -z "$CODEX_PATH" ]]; then
             log "codex CLI not found after install."
             exit 1
