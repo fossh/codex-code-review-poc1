@@ -580,6 +580,8 @@ jobs:
           }
           Use paths relative to repo root. "line" is the line number in the new file (right side).
           Only include inline comments for lines that appear in the PR diff; omit uncertain ones.
+          For every finding you mention in the body, include a corresponding inline comment that points to the relevant line.
+          If you cannot anchor a finding to a changed line, omit that finding from the body.
           Do not include markdown headings or code fences. No text outside the JSON block. Output exactly one JSON block.
           CODE_REVIEW_INSTRUCTIONS
           REMOTE_EOF
@@ -625,6 +627,8 @@ jobs:
             }
             Use paths relative to repo root. "line" is the line number in the new file (right side).
             Only include inline comments for lines that appear in the PR diff; omit uncertain ones.
+            For every finding you mention in the body, include a corresponding inline comment that points to the relevant line.
+            If you cannot anchor a finding to a changed line, omit that finding from the body.
             Do not include markdown headings or code fences. No text outside the JSON block. Output exactly one JSON block.
           CODE_REVIEW_INSTRUCTIONS
           REMOTE_RETRY
