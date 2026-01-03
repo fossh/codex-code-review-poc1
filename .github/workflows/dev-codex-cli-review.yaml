@@ -7,7 +7,7 @@ on:
 
 jobs:
   build-ami:
-    runs-on: dev-172-31-13-161-codex-cli
+    runs-on: ubuntu-latest
     environment: dev
     permissions:
       id-token: write
@@ -157,7 +157,7 @@ jobs:
 
   codex-cli:
     needs: build-ami
-    runs-on: dev-172-31-13-161-codex-cli
+    runs-on: ubuntu-latest
     environment: dev
     permissions:
       id-token: write
