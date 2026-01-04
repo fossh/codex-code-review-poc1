@@ -701,7 +701,11 @@ jobs:
           for entry in raw_comments:
               if not isinstance(entry, dict):
                   continue
-              path = str(entry.get("path", "")).lstrip("./").lstrip("/")
+              path = str(entry.get("path", "")).strip().strip("`\"")
+              if path.startswith("./"):
+                  path = path[2:]
+              if path.startswith("/"):
+                  path = path[1:]
               body_text = str(entry.get("body", "")).strip()
               try:
                   line = int(entry.get("line"))
