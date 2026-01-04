@@ -647,17 +647,46 @@ jobs:
           ensure_commit(head_sha, fallback_url=auth_head_clone_url or None)
 
           if base_sha and head_sha:
-              diff_text = subprocess.check_output(
-                  ["git", "diff", "--no-color", "--unified=0", f"{base_sha}...{head_sha}"],
-                  text=True,
-              )
+              diff_args = ["git", "diff", "--no-color", "--unified=3", f"{base_sha}...{head_sha}"]
           else:
-              diff_text = subprocess.check_output(
-                  ["git", "diff", "--no-color", "--unified=0", "HEAD~1...HEAD"],
-                  text=True,
-              )
+              diff_args = ["git", "diff", "--no-color", "--unified=3", "HEAD~1...HEAD"]
 
+          diff_text = subprocess.check_output(diff_args, text=True)
           positions = build_positions(diff_text)
+          file_positions_cache = {}
+
+          def position_for(path, line):
+              pos = positions.get(path, {}).get(line)
+              if pos:
+                  return pos
+              if path in file_positions_cache:
+                  return file_positions_cache[path].get(line)
+              if base_sha and head_sha:
+                  file_args = [
+                      "git",
+                      "diff",
+                      "--no-color",
+                      "--unified=10000",
+                      f"{base_sha}...{head_sha}",
+                      "--",
+                      path,
+                  ]
+              else:
+                  file_args = [
+                      "git",
+                      "diff",
+                      "--no-color",
+                      "--unified=10000",
+                      "HEAD~1...HEAD",
+                      "--",
+                      path,
+                  ]
+              try:
+                  file_diff = subprocess.check_output(file_args, text=True)
+              except subprocess.CalledProcessError:
+                  file_diff = ""
+              file_positions_cache[path] = build_positions(file_diff).get(path, {})
+              return file_positions_cache[path].get(line)
 
           event = str(review.get("event", "COMMENT")).upper()
           if event not in {"COMMENT", "REQUEST_CHANGES", "APPROVE"}:
@@ -680,7 +709,7 @@ jobs:
                   continue
               if not path or not body_text:
                   continue
-              position = positions.get(path, {}).get(line)
+              position = position_for(path, line)
               if not position:
                   continue
               api_comments.append({"path": path, "position": position, "body": body_text})
