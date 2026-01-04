@@ -9,14 +9,12 @@ MUST HAVE REQUIREMENTS:
 """
 
 import subprocess, sys, time, sqlite3
-from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Paths
+# Paths (relative, script runs from .github/codex/)
 # ---------------------------------------------------------------------------
 
-script_dir = Path(__file__).parent
-db_path = script_dir.parent / "tmp" / "pipeline.db"
+db_path = "db.sqlite3"
 
 # ---------------------------------------------------------------------------
 # Scripts to run in order (matches debug_flow.d2)
@@ -36,7 +34,7 @@ scripts = [
 
 for script in scripts:
     print(f"=== Running {script} ===")
-    subprocess.run([sys.executable, str(script_dir / script), "--db", str(db_path)], check=True)
+    subprocess.run([sys.executable, script, "--db", db_path], check=True)
 
 # ---------------------------------------------------------------------------
 # Get IP from DB for user to copy
@@ -57,7 +55,7 @@ conn.close()
 
 print("=== Sleeping 6 hours (token active for local testing) ===")
 print(f"EC2 IP: {public_ip}")
-print(f"Download with: uv run .github/codex/008_rsync_from_ec2.py {public_ip} {repo_name} {pr_number}")
+print(f"Download with: cd .github/codex && uv run 008_rsync_from_ec2.py --db {db_path}")
 time.sleep(21600)
 
 print("=== Debug pipeline complete ===")

@@ -2,42 +2,41 @@
 Download files from EC2 for local testing.
 
 MUST HAVE REQUIREMENTS:
-- Read ssh_private_key from .env (CODEX_SSH_PRIVATE_KEY)
+- Read ssh_private_key, public_ip, workdir from DB
 - Download workdir from EC2
-- Save to .github/tmp/
+- Save to tmp/
 
-Usage: uv run rsync_from_ec2.py <public_ip> <repo_name> <pr_number>
+Usage: uv run 008_rsync_from_ec2.py --db db.sqlite3
 """
 
-import subprocess, tempfile, os, sys
+import subprocess, tempfile, os, sys, sqlite3
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Parse args
+# Paths (relative, script runs from .github/codex/)
 # ---------------------------------------------------------------------------
 
-public_ip = sys.argv[1]
-repo_name = sys.argv[2]
-pr_number = sys.argv[3]
+db_path = Path(sys.argv[2])
+local_dir = Path("tmp")
+local_dir.mkdir(exist_ok=True)
 
 # ---------------------------------------------------------------------------
-# Load .env for SSH key
+# Read config from DB
 # ---------------------------------------------------------------------------
 
-env_path = Path(__file__).parent.parent.parent / ".env"
-for line in env_path.read_text().splitlines():
-    if "=" in line and not line.startswith("#"):
-        key, val = line.split("=", 1)
-        os.environ[key.strip()] = val.strip().strip("'\"")
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
 
-ssh_private_key = os.environ["CODEX_SSH_PRIVATE_KEY"]
+cursor.execute("SELECT key, value FROM config WHERE key IN ('public_ip', 'ssh_private_key', 'workdir')")
+config = dict(cursor.fetchall())
+conn.close()
 
 # ---------------------------------------------------------------------------
 # Write key to temp file
 # ---------------------------------------------------------------------------
 
 key_fd, key_path = tempfile.mkstemp()
-os.write(key_fd, ssh_private_key.encode())
+os.write(key_fd, config["ssh_private_key"].encode())
 os.close(key_fd)
 os.chmod(key_path, 0o600)
 
@@ -45,17 +44,13 @@ os.chmod(key_path, 0o600)
 # Download workdir from EC2
 # ---------------------------------------------------------------------------
 
-workdir = f"/home/ubuntu/{repo_name}/{pr_number}/"
-local_dir = Path(__file__).parent.parent / "tmp"
-local_dir.mkdir(parents=True, exist_ok=True)
-
-remote_host = f"ubuntu@{public_ip}"
+remote_host = f"ubuntu@{config['public_ip']}"
 ssh_opts = ["-o", "StrictHostKeyChecking=no", "-i", key_path]
 
-print(f"Downloading {workdir} from {public_ip}...")
+print(f"Downloading {config['workdir']} from {config['public_ip']}...")
 subprocess.run(
     ["rsync", "-avz", "-e", f"ssh {' '.join(ssh_opts)}",
-     f"{remote_host}:{workdir}", str(local_dir) + "/"],
+     f"{remote_host}:{config['workdir']}/", str(local_dir) + "/"],
     check=True
 )
 

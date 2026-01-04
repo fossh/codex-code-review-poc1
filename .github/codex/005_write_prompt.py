@@ -13,11 +13,12 @@ from pathlib import Path
 from jinja2 import Template
 
 # ---------------------------------------------------------------------------
-# DB path from command line: --db <path>
+# Paths (relative, script runs from .github/codex/)
 # ---------------------------------------------------------------------------
 
 db_path = Path(sys.argv[2])
-local_prompt_path = db_path.parent / "prompt.txt"
+local_prompt_path = Path("tmp/prompt.txt")
+local_prompt_path.parent.mkdir(exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Read github context
@@ -32,7 +33,7 @@ github_ctx = json.loads(github_raw.decode() if isinstance(github_raw, bytes) els
 # Render template
 # ---------------------------------------------------------------------------
 
-template_path = Path(__file__).parent / "templates" / "prompt.txt.j2"
+template_path = Path("templates/prompt.txt.j2")
 template = Template(template_path.read_text())
 
 prompt = template.render(

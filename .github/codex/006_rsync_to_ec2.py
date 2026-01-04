@@ -12,11 +12,11 @@ import sqlite3, subprocess, tempfile, os, sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# DB path from command line: --db <path>
+# Paths (relative, script runs from .github/codex/)
 # ---------------------------------------------------------------------------
 
 db_path = Path(sys.argv[2])
-local_tmp = db_path.parent
+local_tmp = Path("tmp")
 
 # ---------------------------------------------------------------------------
 # Read config from DB

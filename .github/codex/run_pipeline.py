@@ -8,14 +8,12 @@ MUST HAVE REQUIREMENTS:
 """
 
 import subprocess, sys
-from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Paths
+# Paths (relative, script runs from .github/codex/)
 # ---------------------------------------------------------------------------
 
-script_dir = Path(__file__).parent
-db_path = script_dir.parent / "tmp" / "pipeline.db"
+db_path = "db.sqlite3"
 
 # ---------------------------------------------------------------------------
 # Scripts to run in order (matches prod_flow.d2)
@@ -36,6 +34,6 @@ scripts = [
 
 for script in scripts:
     print(f"=== Running {script} ===")
-    subprocess.run([sys.executable, str(script_dir / script), "--db", str(db_path)], check=True)
+    subprocess.run([sys.executable, script, "--db", db_path], check=True)
 
 print("=== Pipeline complete ===")

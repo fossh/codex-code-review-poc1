@@ -13,11 +13,12 @@ from pathlib import Path
 from jinja2 import Template
 
 # ---------------------------------------------------------------------------
-# DB path from command line: --db <path>
+# Paths (relative, script runs from .github/codex/)
 # ---------------------------------------------------------------------------
 
 db_path = Path(sys.argv[2])
-local_agents_path = db_path.parent / "AGENTS.md"
+local_agents_path = Path("tmp/AGENTS.md")
+local_agents_path.parent.mkdir(exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Read from database
@@ -40,7 +41,7 @@ github_token = (token_raw.decode() if isinstance(token_raw, bytes) else token_ra
 # Render template
 # ---------------------------------------------------------------------------
 
-template_path = Path(__file__).parent / "templates" / "agents.md.j2"
+template_path = Path("templates/agents.md.j2")
 template = Template(template_path.read_text())
 
 agents_content = template.render(

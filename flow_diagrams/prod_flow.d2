@@ -52,7 +52,7 @@ Pipeline: {
 aws_launch_spot: {
   shape: sql_table
   script: "002_aws_launch_spot.py"
-  arg_db: "--db .github/tmp/pipeline.db"
+  arg_db: "--db db.sqlite3"
   in_ami_id: "ami-02f6ef44bfbfd81b1"
   in_instance_type: "t3.medium"
   in_region: "ap-south-1"
@@ -66,7 +66,7 @@ aws_launch_spot: {
 ssh_wait: {
   shape: sql_table
   script: "003_ssh_wait.py"
-  arg_db: "--db .github/tmp/pipeline.db"
+  arg_db: "--db db.sqlite3"
   in_public_ip: "x.x.x.x"
   in_ssh_private_key: "RSA key"
   output: "(none)"
@@ -75,7 +75,7 @@ ssh_wait: {
 write_agents: {
   shape: sql_table
   script: "004_write_agents.py"
-  arg_db: "--db .github/tmp/pipeline.db"
+  arg_db: "--db db.sqlite3"
   in_workdir: "/home/ubuntu/{repo}/{pr}/"
   in_pr_number: "123"
   in_github_context: "dumps.github"
@@ -87,7 +87,7 @@ write_agents: {
 write_prompt: {
   shape: sql_table
   script: "005_write_prompt.py"
-  arg_db: "--db .github/tmp/pipeline.db"
+  arg_db: "--db db.sqlite3"
   in_github_context: "dumps.github"
   out_prompt: "string"
   out_file: "prompt.txt"
@@ -96,7 +96,7 @@ write_prompt: {
 rsync_to_ec2: {
   shape: sql_table
   script: "006_rsync_to_ec2.py"
-  arg_db: "--db .github/tmp/pipeline.db"
+  arg_db: "--db db.sqlite3"
   in_public_ip: "x.x.x.x"
   in_ssh_private_key: "RSA key"
   in_workdir: "/home/ubuntu/{repo}/{pr}/"
@@ -108,7 +108,7 @@ rsync_to_ec2: {
 ssh_run_codex: {
   shape: sql_table
   script: "007_ssh_run_codex.py"
-  arg_db: "--db .github/tmp/pipeline.db"
+  arg_db: "--db db.sqlite3"
   in_public_ip: "x.x.x.x"
   in_ssh_private_key: "RSA key"
   in_workdir: "/home/ubuntu/{repo}/{pr}/"
@@ -119,7 +119,7 @@ ssh_run_codex: {
 ssh_poweroff: {
   shape: sql_table
   script: "009_ssh_poweroff.py"
-  arg_db: "--db .github/tmp/pipeline.db"
+  arg_db: "--db db.sqlite3"
   condition: "if: always()"
   in_public_ip: "x.x.x.x"
   in_ssh_private_key: "RSA key"
@@ -134,7 +134,7 @@ GHA -> ssh_poweroff
 # SQLite DB
 DB: {
   shape: sql_table
-  path: ".github/tmp/pipeline.db"
+  path: ".github/codex/db.sqlite3"
   table1: "config"
   config_workdir: "/home/ubuntu/{repo}/{pr}/"
   config_pr_number: "123"
