@@ -36,22 +36,6 @@ os.close(key_fd)
 os.chmod(key_path, 0o600)
 
 # ---------------------------------------------------------------------------
-# Install Node.js and codex CLI on remote host
-# ---------------------------------------------------------------------------
-
-install_cmd = """
-command -v node || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs)
-command -v codex || sudo npm install -g @openai/codex
-"""
-
-print("Installing Node.js and codex CLI...")
-subprocess.run(
-    ["ssh", "-o", "StrictHostKeyChecking=no", "-i", key_path,
-     f"ubuntu@{config['public_ip']}", install_cmd],
-    check=True
-)
-
-# ---------------------------------------------------------------------------
 # Run codex in workdir
 # ---------------------------------------------------------------------------
 
