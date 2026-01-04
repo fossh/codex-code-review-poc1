@@ -5,7 +5,7 @@ direction: down
 # Trigger
 Trigger: {
   shape: sql_table
-  event: "workflow_dispatch (manual)"
+  event: "workflow_dispatch"
   input: "pr_number"
 }
 
@@ -13,7 +13,11 @@ Trigger: {
 dump_workflow: {
   shape: sql_table
   name: "dump-pr-context.yaml"
-  workflow_steps: "checkout -> setup-uv -> init-db -> run-debug-pipeline -> ssh-poweroff"
+  step1: "checkout"
+  step2: "setup-uv"
+  step3: "init-db"
+  step4: "run-debug-pipeline"
+  step5: "ssh-poweroff"
 }
 
 Trigger -> dump_workflow
@@ -22,57 +26,80 @@ Trigger -> dump_workflow
 Pipeline: {
   shape: sql_table
   name: "run_debug_pipeline.py"
-  order: "aws_launch_spot -> ssh_wait -> write_agents -> write_prompt -> rsync_to_ec2 -> sleep_6h"
+  step1: "aws_launch_spot"
+  step2: "ssh_wait"
+  step3: "write_agents"
+  step4: "write_prompt"
+  step5: "rsync_to_ec2"
+  step6: "sleep_6h"
 }
 
 aws_launch_spot: {
   shape: sql_table
   script: "aws_launch_spot.py"
-  inputs: "ami_id, instance_type, key_name, security_group_id, region (ap-south-1), aws_creds"
-  outputs: "instance_id, public_ip"
+  in_ami_id: "ami-02f6ef44bfbfd81b1"
+  in_instance_type: "t3.medium"
+  in_region: "ap-south-1"
+  in_key_name: "codex-review"
+  in_security_group_id: "sg-xxx"
+  in_aws_creds: "access_key, secret_key"
+  out_instance_id: "i-xxx"
+  out_public_ip: "x.x.x.x"
 }
 
 ssh_wait: {
   shape: sql_table
   script: "ssh_wait.py"
-  inputs: "public_ip, ssh_private_key"
-  outputs: "(none)"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  output: "(none)"
 }
 
 write_agents: {
   shape: sql_table
   script: "002_write_agents.py"
-  inputs: "workdir, pr_number, dumps.github, dumps.github_token"
-  outputs: "agents_md, file: AGENTS.md"
+  in_workdir: "/home/ubuntu/{repo}/{pr}/"
+  in_pr_number: "123"
+  in_github_context: "dumps.github"
+  in_github_token: "dumps.github_token"
+  out_agents_md: "string"
+  out_file: "AGENTS.md"
 }
 
 write_prompt: {
   shape: sql_table
   script: "003_write_prompt.py"
-  inputs: "dumps.github"
-  outputs: "prompt, file: prompt.txt"
+  in_github_context: "dumps.github"
+  out_prompt: "string"
+  out_file: "prompt.txt"
 }
 
 rsync_to_ec2: {
   shape: sql_table
   script: "rsync_to_ec2.py"
-  inputs: "public_ip, ssh_private_key, workdir, codex_auth_json"
-  outputs: "AGENTS.md, prompt.txt -> workdir; auth.json -> ~/.codex/"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  in_workdir: "/home/ubuntu/{repo}/{pr}/"
+  in_codex_auth_json: "OpenAI tokens"
+  out_workdir: "AGENTS.md, prompt.txt"
+  out_home: "~/.codex/auth.json"
 }
 
 sleep_6h: {
   shape: sql_table
-  script: "(inline in run_debug_pipeline.py)"
+  script: "(inline)"
   cmd: "time.sleep(21600)"
-  purpose: "Keep GitHub token active for local testing"
+  purpose: "Keep token active"
+  duration: "6 hours"
 }
 
 ssh_poweroff: {
   shape: sql_table
   script: "ssh_poweroff.py"
   condition: "if: always()"
-  inputs: "public_ip, ssh_private_key"
-  outputs: "EC2 instance powered off"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  output: "EC2 powered off"
 }
 
 dump_workflow -> Pipeline
@@ -80,13 +107,15 @@ Pipeline -> aws_launch_spot -> ssh_wait -> write_agents -> write_prompt
 write_prompt -> rsync_to_ec2 -> sleep_6h
 dump_workflow -> ssh_poweroff
 
-# EC2 Instance (pre-baked AMI)
+# EC2 Instance
 EC2: {
   shape: sql_table
-  ami: "ami-02f6ef44bfbfd81b1 (Mumbai)"
+  ami: "ami-02f6ef44bfbfd81b1"
+  region: "ap-south-1 (Mumbai)"
   baked_in: "codex CLI"
-  workdir: "/home/ubuntu/{repo_name}/{pr_number}/"
-  rsynced_workdir: "AGENTS.md, prompt.txt"
+  workdir: "/home/ubuntu/{repo}/{pr}/"
+  rsynced_workdir: "AGENTS.md"
+  rsynced_workdir2: "prompt.txt"
   rsynced_home: "~/.codex/auth.json"
 }
 
@@ -95,20 +124,24 @@ rsync_to_ec2 -> EC2
 # Local Download
 rsync_from_ec2: {
   shape: sql_table
-  script: "rsync_from_ec2.py <ip> <repo> <pr>"
-  inputs: "public_ip, ssh_private_key, workdir"
-  outputs: ".github/tmp/ (AGENTS.md, prompt.txt)"
+  script: "rsync_from_ec2.py"
+  usage: "<ip> <repo> <pr>"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  in_workdir: "/home/ubuntu/{repo}/{pr}/"
+  out_local: ".github/tmp/"
 }
 
-EC2 -> rsync_from_ec2: "download during 6h window"
+EC2 -> rsync_from_ec2: "download during 6h"
 
 # Local Testing Instructions
 local_testing: {
   shape: sql_table
-  step1: "1. Trigger dump-pr-context workflow"
-  step2: "2. Copy EC2 IP from workflow logs"
-  step3: "3. Run: uv run rsync_from_ec2.py <ip> <repo> <pr>"
-  step4: "4. Test scripts locally or run codex manually"
+  step1: "Trigger workflow"
+  step2: "Copy EC2 IP from logs"
+  step3: "Run rsync_from_ec2.py"
+  step4: "Test scripts locally"
+  step5: "Or run codex manually"
 }
 
 rsync_from_ec2 -> local_testing
