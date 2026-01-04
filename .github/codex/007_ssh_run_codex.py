@@ -1,0 +1,56 @@
+"""
+Run codex on remote host.
+
+MUST HAVE REQUIREMENTS:
+- Read public_ip, ssh_private_key, workdir, prompt from DB
+- Execute codex via SSH in workdir
+"""
+
+import sqlite3, subprocess, tempfile, os, sys
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# DB path from command line: --db <path>
+# ---------------------------------------------------------------------------
+
+db_path = Path(sys.argv[2])
+
+# ---------------------------------------------------------------------------
+# Read config from DB
+# ---------------------------------------------------------------------------
+
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+
+cursor.execute("SELECT key, value FROM config WHERE key IN ('public_ip', 'ssh_private_key', 'workdir', 'prompt')")
+config = dict(cursor.fetchall())
+conn.close()
+
+# ---------------------------------------------------------------------------
+# Write key to temp file
+# ---------------------------------------------------------------------------
+
+key_fd, key_path = tempfile.mkstemp()
+os.write(key_fd, config["ssh_private_key"].encode())
+os.close(key_fd)
+os.chmod(key_path, 0o600)
+
+# ---------------------------------------------------------------------------
+# Run codex in workdir
+# ---------------------------------------------------------------------------
+
+codex_cmd = f"cd {config['workdir']} && cat prompt.txt | codex exec -m gpt-5.2-codex --config model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check"
+
+print(f"Running codex in {config['workdir']}...")
+result = subprocess.run(
+    ["ssh", "-o", "StrictHostKeyChecking=no", "-i", key_path,
+     f"ubuntu@{config['public_ip']}", codex_cmd],
+    capture_output=True, text=True
+)
+print(f"STDOUT:\n{result.stdout}")
+print(f"STDERR:\n{result.stderr}")
+if result.returncode != 0:
+    raise SystemExit(f"Codex failed with exit code {result.returncode}")
+
+os.unlink(key_path)
+print("Codex execution complete")

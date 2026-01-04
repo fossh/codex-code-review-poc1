@@ -1,0 +1,143 @@
+direction: down
+
+# Setup Flow for Codex PR Review Pipeline
+
+# AWS Setup
+aws_setup: {
+  shape: sql_table
+  title: "AWS Account Setup"
+  step1: "Create IAM user"
+  step2: "Create EC2 key pair"
+  step3: "Create security group"
+  step4: "Bake AMI with codex CLI"
+}
+
+iam_user: {
+  shape: sql_table
+  title: "IAM User"
+  name: "codex-review-bot"
+  policy: "EC2 RunInstances"
+  policy2: "EC2 DescribeInstances"
+  policy3: "EC2 TerminateInstances"
+  output_access_key: "AKIA..."
+  output_secret_key: "..."
+}
+
+key_pair: {
+  shape: sql_table
+  title: "EC2 Key Pair"
+  name: "codex-review"
+  region: "ap-south-1"
+  output_pem: "codex-review.pem"
+  output_private_key: "RSA key string"
+}
+
+security_group: {
+  shape: sql_table
+  title: "Security Group"
+  name: "codex-review-sg"
+  region: "ap-south-1"
+  inbound_ssh: "22 from 0.0.0.0/0"
+  outbound: "all traffic"
+  output_sg_id: "sg-xxx"
+}
+
+ami_bake: {
+  shape: sql_table
+  title: "Bake AMI"
+  base_ami: "Ubuntu 22.04 LTS"
+  region: "ap-south-1"
+  install1: "curl, git, rsync"
+  install2: "codex CLI"
+  install3: "uv (Python)"
+  output_ami_id: "ami-xxx"
+}
+
+aws_setup -> iam_user
+aws_setup -> key_pair
+aws_setup -> security_group
+aws_setup -> ami_bake
+
+# OpenAI/Codex Setup
+codex_setup: {
+  shape: sql_table
+  title: "Codex CLI Setup"
+  step1: "Get OpenAI API key"
+  step2: "Create auth.json"
+}
+
+auth_json: {
+  shape: sql_table
+  title: "auth.json"
+  location: "~/.codex/auth.json"
+  format: "JSON object"
+  contains: "OpenAI API tokens"
+  note: "Baked in AMI or rsynced"
+}
+
+codex_setup -> auth_json
+
+# GitHub Setup
+github_setup: {
+  shape: sql_table
+  title: "GitHub Repository Setup"
+  step1: "Enable Actions"
+  step2: "Configure secrets"
+  step3: "Add workflow file"
+}
+
+github_secrets: {
+  shape: sql_table
+  title: "Repository Secrets"
+  CODEX_CONFIG: "JSON object (see below)"
+}
+
+codex_config_json: {
+  shape: sql_table
+  title: "CODEX_CONFIG JSON"
+  ami_id: "ami-xxx"
+  instance_type: "t3.medium"
+  key_name: "codex-review"
+  security_group_id: "sg-xxx"
+  region: "ap-south-1"
+  ssh_private_key: "RSA key from .pem"
+  aws_access_key_id: "AKIA..."
+  aws_secret_access_key: "..."
+  codex_auth_json: "auth.json contents"
+}
+
+github_setup -> github_secrets -> codex_config_json
+
+# Connections showing data flow
+iam_user -> codex_config_json: "aws creds"
+key_pair -> codex_config_json: "ssh key"
+security_group -> codex_config_json: "sg id"
+ami_bake -> codex_config_json: "ami id"
+auth_json -> codex_config_json: "auth json"
+
+# Verification
+verify: {
+  shape: sql_table
+  title: "Verify Setup"
+  test1: "SSH to EC2 manually"
+  test2: "Run codex CLI on EC2"
+  test3: "Trigger workflow_dispatch"
+  test4: "Check PR review posted"
+}
+
+codex_config_json -> verify
+
+# Checklist
+checklist: {
+  shape: sql_table
+  title: "Pre-flight Checklist"
+  check1: "IAM user has EC2 permissions"
+  check2: "Key pair exists in target region"
+  check3: "Security group allows SSH"
+  check4: "AMI has codex CLI installed"
+  check5: "CODEX_CONFIG secret is valid JSON"
+  check6: "OpenAI API key has credits"
+  check7: "GitHub token has PR write access"
+}
+
+verify -> checklist
