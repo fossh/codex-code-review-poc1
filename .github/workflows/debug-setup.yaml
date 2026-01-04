@@ -1,0 +1,116 @@
+name: debug-setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to setup debug environment for
+        required: true
+        type: string
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: setup-and-sleep
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON || vars.CODEX_AUTH_JSON }}
+          CODEX_ID_RSA: ${{ secrets.CODEX_ID_RSA || vars.CODEX_ID_RSA }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || vars.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || vars.AWS_SECRET_ACCESS_KEY }}
+          CODEX_EXISTING_INSTANCE_ID: ${{ secrets.CODEX_EXISTING_INSTANCE_ID || vars.CODEX_EXISTING_INSTANCE_ID }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          # Write secrets to temp files
+          mkdir -p /tmp/codex
+          echo "$GITHUB_CONTEXT" > /tmp/codex/github_context.json
+          echo "$GITHUB_TOKEN" > /tmp/codex/github_token.txt
+          echo "$CODEX_AUTH_JSON" > /tmp/codex/auth.json
+          echo "$CODEX_ID_RSA" > /tmp/codex/id_rsa
+          chmod 600 /tmp/codex/id_rsa
+
+          # Get EC2 public IP
+          export AWS_DEFAULT_REGION=ap-south-1
+          PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-ids "$CODEX_EXISTING_INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+          echo "EC2 IP: $PUBLIC_IP"
+
+          # SSH options
+          SSH_OPTS="-i /tmp/codex/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o LogLevel=ERROR"
+          SSH_USER="ubuntu"
+          REMOTE_WORKDIR="/home/$SSH_USER/codex-debug"
+
+          # Wait for SSH
+          for i in {1..30}; do
+            ssh $SSH_OPTS "$SSH_USER@$PUBLIC_IP" "echo ready" && break || sleep 5
+          done
+
+          # Create remote dirs and upload files
+          ssh $SSH_OPTS "$SSH_USER@$PUBLIC_IP" "mkdir -p ~/.codex $REMOTE_WORKDIR/.github/tmp"
+          rsync -e "ssh $SSH_OPTS" -az /tmp/codex/auth.json "$SSH_USER@$PUBLIC_IP:~/.codex/auth.json"
+          rsync -e "ssh $SSH_OPTS" -az /tmp/codex/github_context.json "$SSH_USER@$PUBLIC_IP:$REMOTE_WORKDIR/.github/tmp/"
+          rsync -e "ssh $SSH_OPTS" -az /tmp/codex/github_token.txt "$SSH_USER@$PUBLIC_IP:$REMOTE_WORKDIR/.github/tmp/"
+
+          # Clone repo on EC2
+          ssh $SSH_OPTS "$SSH_USER@$PUBLIC_IP" "PR_NUMBER='$PR_NUMBER' bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          cd ~/codex-debug
+
+          # Parse PR metadata
+          python3 - <<'PY' > .github/tmp/pr_meta.sh
+          import json
+          from pathlib import Path
+          ctx = json.loads(Path(".github/tmp/github_context.json").read_text())
+          event = ctx.get("event") or {}
+          pr = event.get("pull_request") or {}
+          owner_repo = ctx.get("repository") or ""
+          pr_number = pr.get("number") or event.get("number") or ""
+          base_ref = (pr.get("base") or {}).get("ref") or "dev"
+          head_sha = (pr.get("head") or {}).get("sha") or ""
+          print(f'OWNER_REPO="{owner_repo}"')
+          print(f'PR_NUMBER="{pr_number}"')
+          print(f'BASE_REF="{base_ref}"')
+          print(f'HEAD_SHA="{head_sha}"')
+          PY
+          source .github/tmp/pr_meta.sh
+
+          # Use PR_NUMBER from env if context doesn't have it
+          [[ -z "$PR_NUMBER" ]] && PR_NUMBER="$PR_NUMBER"
+
+          # Clone repo
+          TOKEN="$(cat .github/tmp/github_token.txt)"
+          CLONE_URL="https://x-access-token:${TOKEN}@github.com/${OWNER_REPO}.git"
+          rm -rf repo
+          git clone "$CLONE_URL" repo
+          cd repo
+          git fetch origin "$BASE_REF" --depth 50
+          git fetch origin "pull/${PR_NUMBER}/head:pr-head" --depth 50
+          git checkout pr-head
+          git remote set-url origin "https://github.com/${OWNER_REPO}.git"
+          REMOTE_SCRIPT
+
+          echo ""
+          echo "=========================================="
+          echo "DEBUG ENVIRONMENT READY"
+          echo "=========================================="
+          echo "EC2 IP: $PUBLIC_IP"
+          echo "Remote workdir: $REMOTE_WORKDIR"
+          echo ""
+          echo "To download locally:"
+          echo "  rsync -avz -e 'ssh -i ~/.ssh/codex-key' ubuntu@$PUBLIC_IP:~/codex-debug/ ./local-debug/"
+          echo ""
+          echo "Sleeping forever... (cancel workflow when done)"
+          echo "=========================================="
+
+          sleep infinity
