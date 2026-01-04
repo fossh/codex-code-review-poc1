@@ -417,6 +417,17 @@ jobs:
 
           raw_comments = review.get("comments") or []
           api_comments = []
+          def candidate_paths(value):
+              candidates = []
+              if value:
+                  candidates.append(value)
+              if value.startswith("a/") or value.startswith("b/"):
+                  candidates.append(value[2:])
+              if value.startswith("github/"):
+                  candidates.append("." + value)
+              if value.startswith(".github/"):
+                  candidates.append(value[1:])
+              return [c for c in candidates if c]
           for entry in raw_comments:
               if not isinstance(entry, dict):
                   continue
@@ -432,10 +443,16 @@ jobs:
                   continue
               if not path or not body_text:
                   continue
-              position = position_for(path, line)
-              if not position:
+              matched = False
+              for candidate in candidate_paths(path):
+                  position = position_for(candidate, line)
+                  if not position:
+                      continue
+                  api_comments.append({"path": candidate, "position": position, "body": body_text})
+                  matched = True
+                  break
+              if not matched:
                   continue
-              api_comments.append({"path": path, "position": position, "body": body_text})
 
           findings = [
               line.strip()
