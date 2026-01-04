@@ -7,14 +7,14 @@ MUST HAVE REQUIREMENTS:
 - Exit 0 when ready, exit 1 on timeout
 """
 
-import sqlite3, subprocess, time, tempfile, os
+import sqlite3, subprocess, time, tempfile, os, sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# DB path (hardcoded for all scripts)
+# DB path from command line: --db <path>
 # ---------------------------------------------------------------------------
 
-db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
+db_path = Path(sys.argv[2])
 
 # ---------------------------------------------------------------------------
 # Read config from DB

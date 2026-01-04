@@ -8,16 +8,16 @@ MUST HAVE REQUIREMENTS:
 - Store prompt in DB
 """
 
-import sqlite3, json
+import sqlite3, json, sys
 from pathlib import Path
 from jinja2 import Template
 
 # ---------------------------------------------------------------------------
-# DB and output paths
+# DB path from command line: --db <path>
 # ---------------------------------------------------------------------------
 
-db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
-local_prompt_path = Path(__file__).parent.parent / "tmp" / "prompt.txt"
+db_path = Path(sys.argv[2])
+local_prompt_path = db_path.parent / "prompt.txt"
 
 # ---------------------------------------------------------------------------
 # Read github context

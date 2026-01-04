@@ -3,11 +3,19 @@ Run pipeline scripts in order.
 
 MUST HAVE REQUIREMENTS:
 - Execute list of scripts sequentially using subprocess
-- Order: aws_launch_spot → ssh_wait → write_agents → write_prompt → rsync → codex → poweroff
+- Pass --db argument to each script
+- Order: aws_launch_spot → ssh_wait → write_agents → write_prompt → rsync → codex
 """
 
 import subprocess, sys
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+
+script_dir = Path(__file__).parent
+db_path = script_dir.parent / "tmp" / "pipeline.db"
 
 # ---------------------------------------------------------------------------
 # Scripts to run in order (matches prod_flow.d2)
@@ -23,13 +31,11 @@ scripts = [
 ]
 
 # ---------------------------------------------------------------------------
-# Run each script
+# Run each script with --db argument
 # ---------------------------------------------------------------------------
-
-script_dir = Path(__file__).parent
 
 for script in scripts:
     print(f"=== Running {script} ===")
-    subprocess.run([sys.executable, str(script_dir / script)], check=True)
+    subprocess.run([sys.executable, str(script_dir / script), "--db", str(db_path)], check=True)
 
 print("=== Pipeline complete ===")

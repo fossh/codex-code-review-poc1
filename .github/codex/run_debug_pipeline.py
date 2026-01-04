@@ -3,12 +3,20 @@ Run debug pipeline scripts in order.
 
 MUST HAVE REQUIREMENTS:
 - Execute list of scripts sequentially using subprocess
+- Pass --db argument to each script
 - Order: aws_launch_spot → ssh_wait → write_agents → write_prompt → rsync → sleep 6h
 - Same as prod but sleep instead of codex
 """
 
-import subprocess, sys, time
+import subprocess, sys, time, sqlite3
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+
+script_dir = Path(__file__).parent
+db_path = script_dir.parent / "tmp" / "pipeline.db"
 
 # ---------------------------------------------------------------------------
 # Scripts to run in order (matches debug_flow.d2)
@@ -23,21 +31,17 @@ scripts = [
 ]
 
 # ---------------------------------------------------------------------------
-# Run each script
+# Run each script with --db argument
 # ---------------------------------------------------------------------------
-
-script_dir = Path(__file__).parent
 
 for script in scripts:
     print(f"=== Running {script} ===")
-    subprocess.run([sys.executable, str(script_dir / script)], check=True)
+    subprocess.run([sys.executable, str(script_dir / script), "--db", str(db_path)], check=True)
 
 # ---------------------------------------------------------------------------
 # Get IP from DB for user to copy
 # ---------------------------------------------------------------------------
 
-import sqlite3
-db_path = script_dir.parent / "tmp" / "pipeline.db"
 conn = sqlite3.connect(db_path)
 cursor = conn.execute("SELECT value FROM config WHERE key = 'public_ip'")
 public_ip = cursor.fetchone()[0]

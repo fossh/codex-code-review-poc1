@@ -26,11 +26,11 @@ jobs:
       - uses: astral-sh/setup-uv@v4
 
       - name: init-db
-        run: uv run .github/codex/001_init_db.py
+        run: uv run .github/codex/001_init_db.py --db .github/tmp/pipeline.db
 
       - name: run-debug-pipeline
         run: uv run .github/codex/run_debug_pipeline.py
 
       - name: ssh-poweroff
         if: always()
-        run: uv run .github/codex/ssh_poweroff.py
+        run: uv run .github/codex/009_ssh_poweroff.py --db .github/tmp/pipeline.db

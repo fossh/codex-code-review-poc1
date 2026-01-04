@@ -8,15 +8,15 @@ MUST HAVE REQUIREMENTS:
 - Upload auth.json to /home/ubuntu/.codex/auth.json
 """
 
-import sqlite3, subprocess, tempfile, os
+import sqlite3, subprocess, tempfile, os, sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Paths
+# DB path from command line: --db <path>
 # ---------------------------------------------------------------------------
 
-db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
-local_tmp = Path(__file__).parent.parent / "tmp"
+db_path = Path(sys.argv[2])
+local_tmp = db_path.parent
 
 # ---------------------------------------------------------------------------
 # Read config from DB

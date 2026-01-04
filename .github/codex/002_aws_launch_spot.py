@@ -8,14 +8,14 @@ MUST HAVE REQUIREMENTS:
 - Write instance_id and public_ip back to DB
 """
 
-import boto3, sqlite3
+import boto3, sqlite3, sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# DB path (hardcoded for all scripts)
+# DB path from command line: --db <path>
 # ---------------------------------------------------------------------------
 
-db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
+db_path = Path(sys.argv[2])
 
 # ---------------------------------------------------------------------------
 # Read config from DB

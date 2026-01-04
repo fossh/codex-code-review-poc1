@@ -2,19 +2,19 @@
 Initialize pipeline database from environment variables.
 
 MUST HAVE REQUIREMENTS:
-- Create DB at .github/tmp/pipeline.db
+- Create DB at path specified by --db argument
 - Read GITHUB_CONTEXT, GITHUB_TOKEN, CODEX_CONFIG, PR_NUMBER from env
 - Insert all config into DB
 """
 
-import sqlite3, json, os
+import sqlite3, json, sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# DB path (hardcoded for all scripts)
+# DB path from command line: --db <path>
 # ---------------------------------------------------------------------------
 
-db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
+db_path = Path(sys.argv[2])
 db_path.parent.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------

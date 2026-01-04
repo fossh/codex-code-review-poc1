@@ -6,14 +6,14 @@ MUST HAVE REQUIREMENTS:
 - Execute codex via SSH in workdir
 """
 
-import sqlite3, subprocess, tempfile, os
+import sqlite3, subprocess, tempfile, os, sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# DB path
+# DB path from command line: --db <path>
 # ---------------------------------------------------------------------------
 
-db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
+db_path = Path(sys.argv[2])
 
 # ---------------------------------------------------------------------------
 # Read config from DB
