@@ -44,11 +44,14 @@ github_token = (token_raw.decode() if isinstance(token_raw, bytes) else token_ra
 template_path = Path("templates/agents.md.j2")
 template = Template(template_path.read_text())
 
+# Get PR head SHA (not the merge commit SHA)
+head_sha = github_ctx.get("event", {}).get("pull_request", {}).get("head", {}).get("sha", github_ctx.get("sha", ""))
+
 agents_content = template.render(
     owner=github_ctx["repository_owner"],
     repo=github_ctx["repository"].split("/")[1],
     pr_number=pr_number,
-    commit_sha=github_ctx["sha"],
+    commit_sha=head_sha,
     github_token=github_token
 )
 
