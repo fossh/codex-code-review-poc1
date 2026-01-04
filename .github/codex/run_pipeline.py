@@ -37,3 +37,5 @@ for script in scripts:
     subprocess.run([sys.executable, script, "--db", db_path], check=True)
 
 print("=== Pipeline complete ===")
+
+# E2E test change - can be removed
