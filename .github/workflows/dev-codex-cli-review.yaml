@@ -26,10 +26,6 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      # Step 1: Checkout
-      - uses: actions/checkout@v4
-
-      # Step 2: Setup files and run pipeline
       - name: run-codex-review
         env:
           GITHUB_CONTEXT: ${{ toJson(github) }}
@@ -44,25 +40,72 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Write secrets to files
-          mkdir -p .github/tmp
-          echo "$GITHUB_CONTEXT" > .github/tmp/github_context.json
-          echo "$GITHUB_TOKEN" > .github/tmp/github_token.txt
-          echo "$CODEX_AUTH_JSON" > .github/tmp/auth.json
-          echo "$CODEX_ID_RSA" > .github/tmp/id_rsa
-          chmod 600 .github/tmp/id_rsa
+          # Write secrets to temp files
+          mkdir -p /tmp/codex
+          echo "$GITHUB_CONTEXT" > /tmp/codex/github_context.json
+          echo "$GITHUB_TOKEN" > /tmp/codex/github_token.txt
+          echo "$CODEX_AUTH_JSON" > /tmp/codex/auth.json
+          echo "$CODEX_ID_RSA" > /tmp/codex/id_rsa
+          chmod 600 /tmp/codex/id_rsa
 
-          # Write .env for run_pipeline.sh
-          cat > .env <<EOF
-          AWS_ACCESS_KEY_ID='$AWS_ACCESS_KEY_ID'
-          AWS_SECRET_ACCESS_KEY='$AWS_SECRET_ACCESS_KEY'
-          CODEX_EXISTING_INSTANCE_ID='$CODEX_EXISTING_INSTANCE_ID'
-          EOF
+          # Get EC2 public IP
+          export AWS_DEFAULT_REGION=ap-south-1
+          PUBLIC_IP=$(aws ec2 describe-instances \
+            --instance-ids "$CODEX_EXISTING_INSTANCE_ID" \
+            --query 'Reservations[0].Instances[0].PublicIpAddress' \
+            --output text)
+          echo "EC2 IP: $PUBLIC_IP"
 
-          # Export vars for run_pipeline.sh
-          export PR_NUMBER
-          export SESSION_NAME
+          # SSH options
+          SSH_OPTS="-i /tmp/codex/id_rsa -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=15 -o LogLevel=ERROR"
+          SSH_USER="ubuntu"
+          REMOTE_WORKDIR="/home/$SSH_USER/codex-work/$SESSION_NAME"
 
-          # Run the pipeline
+          # Wait for SSH
+          for i in {1..30}; do
+            ssh $SSH_OPTS "$SSH_USER@$PUBLIC_IP" "echo ready" && break || sleep 5
+          done
+
+          # Create remote dirs and upload files
+          ssh $SSH_OPTS "$SSH_USER@$PUBLIC_IP" "mkdir -p ~/.codex $REMOTE_WORKDIR/.github/tmp"
+          scp $SSH_OPTS /tmp/codex/auth.json "$SSH_USER@$PUBLIC_IP:~/.codex/auth.json"
+          scp $SSH_OPTS /tmp/codex/github_context.json "$SSH_USER@$PUBLIC_IP:$REMOTE_WORKDIR/.github/tmp/"
+          scp $SSH_OPTS /tmp/codex/github_token.txt "$SSH_USER@$PUBLIC_IP:$REMOTE_WORKDIR/.github/tmp/"
+
+          # Run pipeline on EC2
+          ssh $SSH_OPTS "$SSH_USER@$PUBLIC_IP" "REMOTE_WORKDIR=$REMOTE_WORKDIR PR_NUMBER='$PR_NUMBER' bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          cd "$REMOTE_WORKDIR"
+
+          # Parse PR metadata
+          python3 - <<'PY' > .github/tmp/pr_meta.sh
+          import json
+          from pathlib import Path
+          ctx = json.loads(Path(".github/tmp/github_context.json").read_text())
+          event = ctx.get("event") or {}
+          pr = event.get("pull_request") or {}
+          owner_repo = ctx.get("repository") or ""
+          pr_number = pr.get("number") or event.get("number") or ""
+          base_ref = (pr.get("base") or {}).get("ref") or "dev"
+          head_sha = (pr.get("head") or {}).get("sha") or ""
+          print(f'OWNER_REPO="{owner_repo}"')
+          print(f'PR_NUMBER="{pr_number}"')
+          print(f'BASE_REF="{base_ref}"')
+          print(f'HEAD_SHA="{head_sha}"')
+          PY
+          source .github/tmp/pr_meta.sh
+
+          # Clone repo
+          TOKEN="$(cat .github/tmp/github_token.txt)"
+          CLONE_URL="https://x-access-token:${TOKEN}@github.com/${OWNER_REPO}.git"
+          [[ -d repo/.git ]] || git clone "$CLONE_URL" repo
+          cd repo
+          git remote set-url origin "$CLONE_URL"
+          git fetch origin "$BASE_REF" --depth 50
+          [[ -n "$PR_NUMBER" ]] && git fetch origin "pull/${PR_NUMBER}/head:pr-head" --depth 50 && git checkout pr-head
+          git remote set-url origin "https://github.com/${OWNER_REPO}.git"
+
+          # Run the pipeline script from repo
           chmod +x .github/codex/run_pipeline.sh
-          .github/codex/run_pipeline.sh
+          REMOTE_WORKDIR="$REMOTE_WORKDIR" .github/codex/run_pipeline.sh
+          REMOTE_SCRIPT
