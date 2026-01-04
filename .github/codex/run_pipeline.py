@@ -3,25 +3,24 @@ Run pipeline scripts in order.
 
 MUST HAVE REQUIREMENTS:
 - Execute list of scripts sequentially using subprocess
+- Order: aws_launch_spot → ssh_wait → write_agents → write_prompt → rsync → codex → poweroff
 """
 
 import subprocess, sys
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Scripts to run in order
+# Scripts to run in order (matches prod_flow.d2)
 # ---------------------------------------------------------------------------
 
 scripts = [
-    "001_init_db.py",
-    "002_write_agents.py",
-    "003_write_prompt.py",
     "aws_launch_spot.py",
     "ssh_wait.py",
-    "ssh_clone_repo.py",
-    "scp_upload_agents.py",
+    "002_write_agents.py",
+    "003_write_prompt.py",
+    "rsync_to_ec2.py",
     "ssh_run_codex.py",
-    "aws_terminate.py",
+    "ssh_poweroff.py",
 ]
 
 # ---------------------------------------------------------------------------

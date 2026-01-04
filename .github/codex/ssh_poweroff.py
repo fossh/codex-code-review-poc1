@@ -1,17 +1,16 @@
 """
-Clone repo and checkout PR branch on remote host.
+Power off EC2 instance via SSH.
 
 MUST HAVE REQUIREMENTS:
-- Read public_ip, ssh_private_key, repo, pr_number from DB
-- Clone repo via SSH
-- Checkout PR branch
+- Read public_ip, ssh_private_key from DB
+- Execute poweroff command via SSH
 """
 
 import sqlite3, subprocess, tempfile, os
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# DB path (hardcoded for all scripts)
+# DB path
 # ---------------------------------------------------------------------------
 
 db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
@@ -23,7 +22,7 @@ db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
 conn = sqlite3.connect(db_path)
 cursor = conn.cursor()
 
-cursor.execute("SELECT key, value FROM config WHERE key IN ('public_ip', 'ssh_private_key', 'repo', 'pr_number')")
+cursor.execute("SELECT key, value FROM config WHERE key IN ('public_ip', 'ssh_private_key')")
 config = dict(cursor.fetchall())
 conn.close()
 
@@ -36,21 +35,16 @@ os.write(key_fd, config["ssh_private_key"].encode())
 os.close(key_fd)
 os.chmod(key_path, 0o600)
 
-ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-i", key_path, f"ubuntu@{config['public_ip']}"]
-
 # ---------------------------------------------------------------------------
-# Clone repo
+# Power off instance
 # ---------------------------------------------------------------------------
 
-print(f"Cloning {config['repo']}...")
-subprocess.run(ssh_cmd + [f"git clone https://github.com/{config['repo']}.git /home/ubuntu/repo"], check=True)
-
-# ---------------------------------------------------------------------------
-# Checkout PR branch
-# ---------------------------------------------------------------------------
-
-print(f"Checking out PR #{config['pr_number']}...")
-subprocess.run(ssh_cmd + [f"cd /home/ubuntu/repo && git fetch origin pull/{config['pr_number']}/head:pr && git checkout pr"], check=True)
+print(f"Powering off {config['public_ip']}...")
+subprocess.run(
+    ["ssh", "-o", "StrictHostKeyChecking=no", "-i", key_path,
+     f"ubuntu@{config['public_ip']}", "sudo poweroff"],
+    check=False  # poweroff may disconnect before returning
+)
 
 os.unlink(key_path)
-print("Repo cloned and PR checked out")
+print("Poweroff command sent")

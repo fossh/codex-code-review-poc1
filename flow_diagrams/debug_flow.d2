@@ -14,7 +14,7 @@ trigger: "workflow_dispatch (manual)" {
 # Dump Workflow
 dump_workflow: "dump-pr-context.yaml" {
   style.fill: "#e8f4f8"
-  checkout -> setup-uv -> init-db -> upload-to-ec2
+  checkout -> setup-uv -> init-db -> upload-to-ec2 -> sleep-6h
 }
 
 trigger -> dump_workflow
@@ -23,8 +23,9 @@ trigger -> dump_workflow
 dump_details: {
   shape: sql_table
   purpose: "Dumps GHA context to DB and uploads to EC2"
-  flow: "init-db → rsync_to_ec2.py"
+  flow: "init-db → upload → sleep 6h"
   ec2_path: "/home/ubuntu/context/{repo_name}/{pr_number}/pipeline.db"
+  sleep: "Keeps GitHub token active for 6 hours"
 }
 
 # EC2 Upload Step

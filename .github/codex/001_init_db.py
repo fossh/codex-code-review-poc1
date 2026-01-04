@@ -52,11 +52,18 @@ cursor.execute("""
 cursor.execute("INSERT INTO dumps VALUES ('json', 'github', ?)", (json.dumps(github_context),))
 cursor.execute("INSERT INTO dumps VALUES ('secret', 'github_token', ?)", (github_token,))
 
+# ---------------------------------------------------------------------------
+# Compute workdir: /home/ubuntu/{repo_name}/{pr_number}/
+# ---------------------------------------------------------------------------
+
+repo_name = github_context["repository"].split("/")[1]
+workdir = f"/home/ubuntu/{repo_name}/{pr_number}"
+
 config_values = [
-    ("repo_root", "/home/ubuntu/repo"),
+    ("workdir", workdir),
     ("pr_number", pr_number),
-    ("ssh_user", "ubuntu"),
     ("repo", github_context["repository"]),
+    ("repo_name", repo_name),
     ("ami_id", codex_config["ami_id"]),
     ("instance_type", codex_config["instance_type"]),
     ("key_name", codex_config["key_name"]),

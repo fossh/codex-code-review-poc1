@@ -2,9 +2,10 @@
 Generate AGENTS.md from Jinja2 template.
 
 MUST HAVE REQUIREMENTS:
-- Read repo_root, github context, and token from database
+- Read workdir, pr_number, github context, token from database
 - Render agents.md.j2 template with context
-- Write AGENTS.md to repo root
+- Write AGENTS.md to local .github/tmp/
+- Store content in DB
 """
 
 import sqlite3, json
@@ -12,19 +13,17 @@ from pathlib import Path
 from jinja2 import Template
 
 # ---------------------------------------------------------------------------
-# DB path (hardcoded for all scripts)
+# DB and output paths
 # ---------------------------------------------------------------------------
 
 db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
+local_agents_path = Path(__file__).parent.parent / "tmp" / "AGENTS.md"
 
 # ---------------------------------------------------------------------------
 # Read from database
 # ---------------------------------------------------------------------------
 
 conn = sqlite3.connect(db_path)
-
-cursor = conn.execute("SELECT value FROM config WHERE key = 'repo_root'")
-repo_root = cursor.fetchone()[0]
 
 cursor = conn.execute("SELECT value FROM config WHERE key = 'pr_number'")
 pr_number = cursor.fetchone()[0]
@@ -53,14 +52,13 @@ agents_content = template.render(
 )
 
 # ---------------------------------------------------------------------------
-# Write AGENTS.md to repo
+# Write AGENTS.md locally and store in DB
 # ---------------------------------------------------------------------------
 
-agents_path = f"{repo_root}/AGENTS.md"
-Path(agents_path).write_text(agents_content)
+local_agents_path.write_text(agents_content)
 
 conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('agents_md', ?)", [agents_content])
 conn.commit()
 conn.close()
 
-print(f"AGENTS.md written to: {agents_path}")
+print(f"AGENTS.md written to: {local_agents_path}")

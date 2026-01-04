@@ -4,7 +4,8 @@ Generate prompt from Jinja2 template.
 MUST HAVE REQUIREMENTS:
 - Read github context for base ref
 - Render prompt.txt.j2 template
-- Write prompt to config table
+- Write prompt.txt to local .github/tmp/
+- Store prompt in DB
 """
 
 import sqlite3, json
@@ -12,10 +13,11 @@ from pathlib import Path
 from jinja2 import Template
 
 # ---------------------------------------------------------------------------
-# DB path (hardcoded for all scripts)
+# DB and output paths
 # ---------------------------------------------------------------------------
 
 db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
+local_prompt_path = Path(__file__).parent.parent / "tmp" / "prompt.txt"
 
 # ---------------------------------------------------------------------------
 # Read github context
@@ -38,11 +40,13 @@ prompt = template.render(
 )
 
 # ---------------------------------------------------------------------------
-# Store prompt
+# Write prompt.txt locally and store in DB
 # ---------------------------------------------------------------------------
+
+local_prompt_path.write_text(prompt)
 
 conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('prompt', ?)", [prompt])
 conn.commit()
 conn.close()
 
-print("Prompt written to config")
+print(f"prompt.txt written to: {local_prompt_path}")
