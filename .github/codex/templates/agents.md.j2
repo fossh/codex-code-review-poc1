@@ -53,6 +53,96 @@ X-GitHub-Api-Version: 2022-11-28
 - Use inline comments for specific lines
 - Keep the summary concise
 
+---
+
+## Prospect Naming Rules
+
+### General Rules
+
+- Use **snake_case** wherever possible
+- Project/repository names should be broad (e.g. `football` not "football_analytics")
+- Include data structure in variable names: `football_player_db`, `cricket_competition_df`, `rugby_union_shirt_number_dict`
+- Use `model` not "mod" (e.g. `post_match_exp_win_model`)
+- Use full words: `competition_season_id` not "comp_seas_key"
+
+### Permitted Abbreviations
+
+| Abbreviation | Meaning | Usage |
+|--------------|---------|-------|
+| `exp` | expected | Performance models quantifying probability, e.g. "exp_points" |
+| `pred` | predicted | Prediction models, e.g. "pred_new_users" |
+| `adj` | adjusted | |
+| `prob` | probability | |
+| `avg` | average | |
+| `std` | standard deviation | |
+| `pct` | percent/percentage | |
+| `diff` | differential | |
+
+### Standard Entity Names
+
+| Use This | Not This | Notes |
+|----------|----------|-------|
+| `match` | fixture, game | "game" OK for tennis specifically |
+| `competition` | league, tournament, series | |
+| `season` | year, edition | |
+| `team` | club, side | |
+| `player` | | |
+| `venue` | stadium, ground | |
+| `differential` | margin | Score/stat differences between teams |
+| `minutes` | mins | Use `per_90_minutes` not "p90mins" |
+
+### ID and Name Fields
+
+- Use both `_name` and `_id` versions: `team_name` and `team_id`
+- `id` should be lowercase (not "ID")
+
+### Sport Names
+
+| Use This | Not This |
+|----------|----------|
+| `football` | soccer |
+| `american_football` | NFL |
+| `rugby_union` | rugby (when union) |
+| `rugby_league` | rugby (when league) |
+
+---
+
+## Prospect Coding Rules
+
+### Code Quality Levels
+
+- **Notebook**: One-off consulting/analysis projects
+- **Dev Pipeline**: Projects with continued use but not fully deployed
+- **Prod Pipeline**: Regular ingestion, client-facing, needs CI/CD and unit tests
+
+### Kedro Folder Structure
+
+| Folder | Purpose |
+|--------|---------|
+| `01_raw` | Source data exactly as received |
+| `02_intermediate` | Temporary/work-in-progress datasets |
+| `03_primary` | Single source of truth after cleaning |
+| `04_feature` | Feature tables for modeling |
+| `05_model_input` | Final dataframes/matrices for models |
+| `06_models` | Model objects |
+| `07_model_output` | Predictions and metrics |
+| `08_reporting` | Human-readable outputs (charts, PDFs) |
+
+### Coding Standards
+
+1. Follow Prospect naming rules (matches not games, competitions not tournaments, `_df` suffix for dataframes)
+2. Avoid bad code smells (duplicated code, hard-coded values)
+3. Use Google docstring format with full sentences
+4. Keep functions under 100 lines, focused on one thing
+5. Function names should begin with verbs: `create_[X]_df`, `train_[X]_model`
+6. Helper functions start with underscore: `_helper_function()`
+7. Add comments above code blocks explaining WHY not HOW
+8. Use hanging indentation for multi-line function calls
+9. Use `parameters.yml` for lists/dictionaries
+10. Include object type in variable names: `match_results_df`, `team_id_dict`
+
+---
+
 ## Important
 
 After reviewing the code, you MUST make the API call to post the review.
