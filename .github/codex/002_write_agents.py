@@ -7,17 +7,15 @@ MUST HAVE REQUIREMENTS:
 - Write AGENTS.md to repo root
 """
 
-import sqlite3, argparse, json
+import sqlite3, json
 from pathlib import Path
 from jinja2 import Template
 
 # ---------------------------------------------------------------------------
-# Parse arguments
+# DB path (hardcoded for all scripts)
 # ---------------------------------------------------------------------------
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--db-path", required=True)
-db_path = parser.parse_args().db_path
+db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
 
 # ---------------------------------------------------------------------------
 # Read from database
@@ -59,8 +57,7 @@ agents_content = template.render(
 # ---------------------------------------------------------------------------
 
 agents_path = f"{repo_root}/AGENTS.md"
-with open(agents_path, "w") as f:
-    f.write(agents_content)
+Path(agents_path).write_text(agents_content)
 
 conn.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('agents_md', ?)", [agents_content])
 conn.commit()

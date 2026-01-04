@@ -43,3 +43,16 @@ s Comments should stay succinct; AGENTS.md already expects block separators, so 
 - Use `uv init` to create `uv.lock` and a local `.venv/`.
 - Install dependencies with `uv add <pkg>` (or project-appropriate `uv pip ...`).
 - Run scripts/tools via `uv run ...` so the correct venv is used.
+
+## tmp folder
+
+- DO NOT delete files from `tmp/` folder.
+- Contains: EC2 keypair (`codex-review.pem`), `CODEX_CONFIG.json`, and other generated files.
+- For local testing, use files from tmp folder.
+- For GitHub Actions, secrets are used instead.
+
+## Update flow.d2
+- It represents the code flow and architecture using D2 (https://d2lang.com).
+- Run `d2 --watch --port 8080 flow.d2 tmp/flow.svg` to view diagram at localhost:8080.
+- After any change in requirement or something thats important, update flow.d2.
+- Keep this updated to reflect the codebase.

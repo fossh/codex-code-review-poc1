@@ -7,17 +7,15 @@ MUST HAVE REQUIREMENTS:
 - Write prompt to config table
 """
 
-import sqlite3, argparse, json
+import sqlite3, json
 from pathlib import Path
 from jinja2 import Template
 
 # ---------------------------------------------------------------------------
-# Parse arguments
+# DB path (hardcoded for all scripts)
 # ---------------------------------------------------------------------------
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--db-path", required=True)
-db_path = parser.parse_args().db_path
+db_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
 
 # ---------------------------------------------------------------------------
 # Read github context

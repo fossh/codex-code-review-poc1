@@ -1,0 +1,155 @@
+direction: down
+
+# Trigger Events
+Trigger: {
+  pull_request: "pull_request to v2"
+  workflow_dispatch: "workflow_dispatch"
+}
+
+# GitHub Actions Workflow
+GHA: "codex-pr-review.yaml" {
+  style.fill: "#e8f4f8"
+
+  checkout -> setup-uv -> init-db -> run_pipeline
+
+  init-db: {
+    shape: sql_table
+    step: "init-db (sqlite3 CLI)"
+    reads: "env: GITHUB_CONTEXT, GITHUB_TOKEN, CODEX_CONFIG, PR_NUMBER"
+    writes: "config.*, dumps.*"
+  }
+}
+
+Trigger.pull_request -> GHA
+Trigger.workflow_dispatch -> GHA
+
+# Secrets
+Secrets: {
+  GITHUB_TOKEN
+  CODEX_CONFIG
+}
+
+Secrets -> GHA.init-db
+
+# Pipeline Scripts with DB I/O
+Pipeline: "run_pipeline.py executes in order" {
+  style.fill: "#f8f9fa"
+
+  aws_launch_spot: {
+    shape: sql_table
+    script: "aws_launch_spot.py"
+    reads: "ami_id, instance_type, key_name, security_group_id, region, aws_access_key_id, aws_secret_access_key"
+    writes: "config.instance_id, config.public_ip"
+  }
+
+  ssh_wait: {
+    shape: sql_table
+    script: "ssh_wait.py"
+    reads: "public_ip, ssh_private_key"
+    writes: "(none)"
+  }
+
+  write_agents: {
+    shape: sql_table
+    script: "write_agents.py"
+    reads: "repo_root, pr_number, dumps.github, dumps.github_token"
+    writes: "config.agents_md, file: AGENTS.md"
+  }
+
+  write_prompt: {
+    shape: sql_table
+    script: "write_prompt.py"
+    reads: "dumps.github"
+    writes: "config.prompt"
+  }
+
+  rsync_to_ec2: {
+    shape: sql_table
+    script: "rsync_to_ec2.py"
+    reads: "public_ip, ssh_private_key, repo_root"
+    writes: "(none)"
+  }
+
+  ssh_clone_repo: {
+    shape: sql_table
+    script: "ssh_clone_repo.py"
+    reads: "public_ip, ssh_private_key, repo, pr_number"
+    writes: "(none)"
+  }
+
+  ssh_run_codex: {
+    shape: sql_table
+    script: "ssh_run_codex.py"
+    reads: "public_ip, ssh_private_key, prompt"
+    writes: "(none)"
+  }
+
+  aws_terminate: {
+    shape: sql_table
+    script: "aws_terminate.py"
+    reads: "instance_id, region, aws_access_key_id, aws_secret_access_key"
+    writes: "(none)"
+  }
+
+  aws_launch_spot -> ssh_wait -> write_agents -> write_prompt
+  write_prompt -> rsync_to_ec2 -> ssh_clone_repo -> ssh_run_codex -> aws_terminate
+}
+
+GHA.run_pipeline -> Pipeline
+
+# SQLite DB
+DB: "SQLite DB (.github/tmp/pipeline.db)" {
+  style.fill: "#fff3cd"
+
+  config: {
+    shape: sql_table
+    repo_root: "/home/ubuntu/repo"
+    pr_number: "string"
+    ssh_user: "ubuntu"
+    repo: "owner/repo"
+    ami_id: "ami-xxx"
+    instance_type: "t3.medium"
+    key_name: "codex-review"
+    security_group_id: "sg-xxx"
+    region: "us-east-1"
+    ssh_private_key: "-----BEGIN RSA..."
+    aws_access_key_id: "AKIA..."
+    aws_secret_access_key: "secret"
+    instance_id: "(written by aws_launch_spot)"
+    public_ip: "(written by aws_launch_spot)"
+    prompt: "(written by write_prompt)"
+    agents_md: "(written by write_agents)"
+  }
+
+  dumps: {
+    shape: sql_table
+    github: "json context"
+    github_token: "ghp_xxx"
+  }
+}
+
+GHA.init-db -> DB: "creates via sqlite3 CLI"
+
+# AWS EC2
+AWS: "AWS EC2 Spot" {
+  style.fill: "#ff9900"
+  instance: "Instance with codex CLI + ~/.codex/auth.json"
+}
+
+Pipeline.aws_launch_spot -> AWS.instance: "launches"
+Pipeline.aws_terminate -> AWS.instance: "terminates"
+
+# Codex Actions
+Codex: "Codex on EC2" {
+  style.fill: "#d4edda"
+  "1. Reads AGENTS.md" -> "2. Reviews git diff" -> "3. POSTs review to GitHub API"
+}
+
+AWS.instance -> Codex
+
+# Final Output
+PR: "Review on PR" {
+  style.fill: "#cce5ff"
+}
+
+Codex -> PR
