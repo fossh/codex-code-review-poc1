@@ -31,8 +31,16 @@ conn.close()
 # ---------------------------------------------------------------------------
 
 subprocess.run(
-    ["codex", "exec", "--prompt", config["prompt"]],
-    cwd=config["repo_root"],
+    [
+        "codex", "exec",
+        "-m", "gpt-5.2-codex",
+        "--config", "model_reasoning_effort=high",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--skip-git-repo-check",
+        "-C", config["repo_root"],
+        "resume", "--last",
+        config["prompt"]
+    ],
     timeout=600
 )
 
