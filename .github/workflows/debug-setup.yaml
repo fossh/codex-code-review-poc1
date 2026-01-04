@@ -63,7 +63,7 @@ jobs:
           rsync -e "ssh $SSH_OPTS" -az /tmp/codex/github_token.txt "$SSH_USER@$PUBLIC_IP:$REMOTE_WORKDIR/.github/tmp/"
 
           # Clone repo on EC2
-          ssh $SSH_OPTS "$SSH_USER@$PUBLIC_IP" "PR_NUMBER='$PR_NUMBER' bash -s" <<'REMOTE_SCRIPT'
+          ssh $SSH_OPTS "$SSH_USER@$PUBLIC_IP" "INPUT_PR_NUMBER='$PR_NUMBER' bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
           cd ~/codex-debug
 
@@ -79,14 +79,14 @@ jobs:
           base_ref = (pr.get("base") or {}).get("ref") or "dev"
           head_sha = (pr.get("head") or {}).get("sha") or ""
           print(f'OWNER_REPO="{owner_repo}"')
-          print(f'PR_NUMBER="{pr_number}"')
+          print(f'CTX_PR_NUMBER="{pr_number}"')
           print(f'BASE_REF="{base_ref}"')
           print(f'HEAD_SHA="{head_sha}"')
           PY
           source .github/tmp/pr_meta.sh
 
-          # Use PR_NUMBER from env if context doesn't have it
-          [[ -z "$PR_NUMBER" ]] && PR_NUMBER="$PR_NUMBER"
+          # Use input PR_NUMBER if context doesn't have it
+          PR_NUMBER="${CTX_PR_NUMBER:-$INPUT_PR_NUMBER}"
 
           # Clone repo
           TOKEN="$(cat .github/tmp/github_token.txt)"
