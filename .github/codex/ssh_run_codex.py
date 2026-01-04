@@ -40,8 +40,8 @@ os.chmod(key_path, 0o600)
 # ---------------------------------------------------------------------------
 
 install_cmd = """
-command -v node || (curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs)
-command -v codex || sudo npm install -g @openai/codex-cli
+command -v node || (curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs)
+command -v codex || sudo npm install -g @openai/codex
 """
 
 print("Installing Node.js and codex CLI...")
