@@ -13,7 +13,7 @@ Trigger: {
 dump_workflow: {
   shape: sql_table
   name: "dump-pr-context.yaml"
-  steps: "checkout -> setup-uv -> init-db -> run-debug-pipeline -> ssh-poweroff"
+  workflow_steps: "checkout -> setup-uv -> init-db -> run-debug-pipeline -> ssh-poweroff"
 }
 
 Trigger -> dump_workflow

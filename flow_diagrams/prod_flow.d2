@@ -11,7 +11,7 @@ Trigger: {
 GHA: {
   shape: sql_table
   name: "codex-pr-review.yaml"
-  steps: "checkout -> setup-uv -> init-db -> run_pipeline -> ssh-poweroff"
+  workflow_steps: "checkout -> setup-uv -> init-db -> run_pipeline -> ssh-poweroff"
 }
 
 Trigger -> GHA
