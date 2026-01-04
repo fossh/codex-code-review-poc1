@@ -20,7 +20,7 @@ Trigger -> GHA
 Secrets: {
   shape: sql_table
   GITHUB_TOKEN: "auto-provided by GitHub"
-  CODEX_CONFIG: "ami_id, instance_type, key_name, security_group_id, region, ssh_private_key, aws_creds"
+  CODEX_CONFIG: "JSON with ami_id, instance_type, key_name, security_group_id, region (ap-south-1), ssh_private_key, aws_creds"
 }
 
 Secrets -> GHA
@@ -35,7 +35,7 @@ Pipeline: {
 aws_launch_spot: {
   shape: sql_table
   script: "aws_launch_spot.py"
-  inputs: "ami_id, instance_type, key_name, security_group_id, region, aws_creds"
+  inputs: "ami_id, instance_type, key_name, security_group_id, region (ap-south-1), aws_creds"
   outputs: "instance_id, public_ip"
 }
 
@@ -78,6 +78,7 @@ ssh_run_codex: {
 ssh_poweroff: {
   shape: sql_table
   script: "ssh_poweroff.py"
+  condition: "if: always()"
   inputs: "public_ip, ssh_private_key"
   outputs: "EC2 instance powered off"
 }
@@ -91,20 +92,22 @@ GHA -> ssh_poweroff
 DB: {
   shape: sql_table
   path: ".github/tmp/pipeline.db"
-  config_table: "workdir, pr_number, repo, ami_id, instance_type, key_name, security_group_id, region, ssh_private_key, aws_creds, instance_id, public_ip, prompt, agents_md"
+  config_table: "workdir, pr_number, repo, ami_id, instance_type, key_name, security_group_id, region (ap-south-1), ssh_private_key, aws_creds, instance_id, public_ip, prompt, agents_md"
   dumps_table: "github (json), github_token"
 }
 
 GHA -> DB: "init-db creates"
 
-# EC2 Directory
-EC2_Dir: {
+# EC2 Instance (pre-baked AMI)
+EC2: {
   shape: sql_table
-  pattern: "/home/ubuntu/{repo_name}/{pr_number}/"
+  ami: "ami-02f6ef44bfbfd81b1 (Mumbai)"
+  preinstalled: "codex CLI, ~/.codex/auth.json"
+  workdir: "/home/ubuntu/{repo_name}/{pr_number}/"
   uploaded: "AGENTS.md, prompt.txt"
 }
 
-rsync_to_ec2 -> EC2_Dir
+rsync_to_ec2 -> EC2
 
 # Codex Actions
 Codex: {

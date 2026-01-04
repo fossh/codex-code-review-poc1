@@ -28,7 +28,7 @@ Pipeline: {
 aws_launch_spot: {
   shape: sql_table
   script: "aws_launch_spot.py"
-  inputs: "ami_id, instance_type, key_name, security_group_id, region, aws_creds"
+  inputs: "ami_id, instance_type, key_name, security_group_id, region (ap-south-1), aws_creds"
   outputs: "instance_id, public_ip"
 }
 
@@ -70,6 +70,7 @@ sleep_6h: {
 ssh_poweroff: {
   shape: sql_table
   script: "ssh_poweroff.py"
+  condition: "if: always()"
   inputs: "public_ip, ssh_private_key"
   outputs: "EC2 instance powered off"
 }
@@ -79,14 +80,16 @@ Pipeline -> aws_launch_spot -> ssh_wait -> write_agents -> write_prompt
 write_prompt -> rsync_to_ec2 -> sleep_6h
 dump_workflow -> ssh_poweroff
 
-# EC2 Directory
-EC2_Dir: {
+# EC2 Instance (pre-baked AMI)
+EC2: {
   shape: sql_table
-  pattern: "/home/ubuntu/{repo_name}/{pr_number}/"
-  content: "AGENTS.md, prompt.txt"
+  ami: "ami-02f6ef44bfbfd81b1 (Mumbai)"
+  preinstalled: "codex CLI, ~/.codex/auth.json"
+  workdir: "/home/ubuntu/{repo_name}/{pr_number}/"
+  uploaded: "AGENTS.md, prompt.txt"
 }
 
-rsync_to_ec2 -> EC2_Dir
+rsync_to_ec2 -> EC2
 
 # Local Download
 rsync_from_ec2: {
@@ -96,7 +99,7 @@ rsync_from_ec2: {
   outputs: ".github/tmp/ (AGENTS.md, prompt.txt)"
 }
 
-EC2_Dir -> rsync_from_ec2: "download during 6h window"
+EC2 -> rsync_from_ec2: "download during 6h window"
 
 # Local Testing Instructions
 local_testing: {
