@@ -65,7 +65,7 @@ Pipeline: "run_pipeline.py executes in order" {
 
   write_agents: {
     shape: sql_table
-    inputs: "repo_root, pr_number, dumps.github, dumps.github_token"
+    inputs: "workdir, pr_number, dumps.github, dumps.github_token"
     script: "write_agents.py"
     outputs: "agents_md, file: AGENTS.md"
     state: "AGENTS.md created locally"
@@ -81,18 +81,18 @@ Pipeline: "run_pipeline.py executes in order" {
 
   rsync_to_ec2: {
     shape: sql_table
-    inputs: "public_ip, ssh_private_key, repo_root"
+    inputs: "public_ip, ssh_private_key, workdir"
     script: "rsync_to_ec2.py"
     outputs: "(none)"
-    state: "AGENTS.md synced to EC2"
+    state: "AGENTS.md + prompt.txt synced to EC2 workdir"
   }
 
   ssh_run_codex: {
     shape: sql_table
-    inputs: "public_ip, ssh_private_key, prompt"
+    inputs: "public_ip, ssh_private_key, workdir, prompt"
     script: "ssh_run_codex.py"
     outputs: "(none)"
-    cmd: "codex exec -m gpt-5.2-codex --config model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check"
+    cmd: "cd {workdir} && codex exec -m gpt-5.2-codex --config model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check"
     state: "PR review posted to GitHub"
   }
 
@@ -110,13 +110,22 @@ Pipeline: "run_pipeline.py executes in order" {
 
 GHA.run_pipeline -> Pipeline
 
+# EC2 Directory Structure
+EC2_Dir: "EC2 Directory Structure" {
+  shape: sql_table
+  pattern: "workdir = /home/ubuntu/{repo_name}/{pr_number}/"
+  example: "/home/ubuntu/myapp/42/"
+  uploaded: "AGENTS.md, prompt.txt → {workdir}/"
+  cloned: "{workdir}/{repo_name}/ (by codex)"
+}
+
 # SQLite DB
 DB: "SQLite DB (.github/tmp/pipeline.db)" {
   style.fill: "#fff3cd"
 
   config: {
     shape: sql_table
-    repo_root: "/home/ubuntu/repo"
+    workdir: "/home/ubuntu/{reponame}/{pr_number}/"
     pr_number: "string"
     repo: "owner/repo"
     ami_id: "ami-xxx"
@@ -149,7 +158,9 @@ AWS: "AWS EC2 Spot" {
 }
 
 Pipeline.aws_launch_spot -> AWS.instance: "launches"
+Pipeline.rsync_to_ec2 -> EC2_Dir: "uploads to"
 Pipeline.ssh_poweroff -> AWS.instance: "poweroff"
+EC2_Dir -> AWS.instance: "on"
 
 # Codex Actions
 Codex: "Codex on EC2" {
