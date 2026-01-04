@@ -33,3 +33,7 @@ jobs:
 
       - name: run-pipeline
         run: uv run .github/codex/run_pipeline.py
+
+      - name: ssh-poweroff
+        if: always()
+        run: uv run .github/codex/ssh_poweroff.py

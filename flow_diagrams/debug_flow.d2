@@ -1,8 +1,8 @@
 direction: down
 
-# Local Testing Flow for Rapid Iteration
+# Debug/Local Testing Flow
 
-title: "Local Testing Flow" {
+title: "Debug Flow" {
   style.fill: "#f0f0f0"
 }
 
@@ -11,80 +11,115 @@ trigger: "workflow_dispatch (manual)" {
   style.fill: "#e0e0e0"
 }
 
-# Dump Workflow
+# Dump Workflow - same instance lifecycle as prod but sleep instead of codex
 dump_workflow: "dump-pr-context.yaml" {
   style.fill: "#e8f4f8"
-  checkout -> setup-uv -> init-db -> upload-to-ec2 -> sleep-6h
+  checkout -> setup-uv -> init-db -> run-debug-pipeline -> ssh-poweroff
 }
 
 trigger -> dump_workflow
 
-# Workflow Details
-dump_details: {
-  shape: sql_table
-  purpose: "Dumps GHA context to DB and uploads to EC2"
-  flow: "init-db → upload → sleep 6h"
-  ec2_path: "/home/ubuntu/context/{repo_name}/{pr_number}/pipeline.db"
-  sleep: "Keeps GitHub token active for 6 hours"
+# Debug Pipeline (like prod but sleep instead of codex)
+Pipeline: "run_debug_pipeline.py" {
+  style.fill: "#f8f9fa"
+
+  aws_launch_spot: {
+    shape: sql_table
+    script: "aws_launch_spot.py"
+    inputs: "ami_id, instance_type, key_name, security_group_id, region, aws_creds"
+    outputs: "instance_id, public_ip"
+    state: "EC2 spot instance running"
+  }
+
+  ssh_wait: {
+    shape: sql_table
+    script: "ssh_wait.py"
+    inputs: "public_ip, ssh_private_key"
+    outputs: "(none)"
+    state: "EC2 SSH ready"
+  }
+
+  write_agents: {
+    shape: sql_table
+    script: "002_write_agents.py"
+    inputs: "workdir, pr_number, dumps.github, dumps.github_token"
+    outputs: "agents_md, file: AGENTS.md"
+    state: "AGENTS.md created locally"
+  }
+
+  write_prompt: {
+    shape: sql_table
+    script: "003_write_prompt.py"
+    inputs: "dumps.github"
+    outputs: "prompt"
+    state: "prompt.txt created locally"
+  }
+
+  rsync_to_ec2: {
+    shape: sql_table
+    script: "rsync_to_ec2.py"
+    inputs: "public_ip, ssh_private_key, workdir"
+    outputs: "(none)"
+    state: "AGENTS.md + prompt.txt synced to EC2 workdir"
+  }
+
+  sleep_6h: {
+    shape: sql_table
+    script: "(inline bash)"
+    inputs: "(none)"
+    outputs: "(none)"
+    cmd: "sleep 21600"
+    state: "GitHub token kept active for 6 hours"
+  }
+
+  aws_launch_spot -> ssh_wait -> write_agents -> write_prompt
+  write_prompt -> rsync_to_ec2 -> sleep_6h
 }
 
-# EC2 Upload Step
-ec2_upload: {
+dump_workflow.run-debug-pipeline -> Pipeline
+
+# SSH Poweroff (separate step)
+ssh_poweroff: {
   shape: sql_table
-  script: "rsync_to_ec2.py"
-  inputs: "public_ip, ssh_private_key, local pipeline.db"
+  script: "ssh_poweroff.py"
+  inputs: "public_ip, ssh_private_key"
   outputs: "(none)"
-  state: "pipeline.db uploaded to EC2"
+  state: "EC2 instance powered off"
 }
 
-dump_workflow -> ec2_upload: "runs"
+dump_workflow.ssh-poweroff -> ssh_poweroff
 
-# EC2 Storage
-EC2_Storage: "EC2 Context Storage" {
+# EC2 Directory
+EC2_Dir: "EC2 Directory" {
   style.fill: "#ff9900"
-  path: "/home/ubuntu/context/{repo_name}/{pr_number}/"
-  content: "pipeline.db (full GHA context)"
+  workdir: "/home/ubuntu/{repo_name}/{pr_number}/"
+  content: "AGENTS.md, prompt.txt, pipeline.db"
 }
 
-ec2_upload -> EC2_Storage: "uploads"
+Pipeline.rsync_to_ec2 -> EC2_Dir: "uploads"
 
-# EC2 Download Step
+# Local Download
 ec2_download: {
   shape: sql_table
-  script: "rsync_from_ec2.py"
-  inputs: "public_ip, ssh_private_key, ec2_path"
+  script: "rsync_from_ec2.py <repo> <pr>"
+  inputs: "public_ip, ssh_private_key, workdir"
   outputs: ".github/tmp/pipeline.db"
-  state: "pipeline.db downloaded locally"
+  state: "Context downloaded locally"
 }
 
-EC2_Storage -> ec2_download: "downloads"
+EC2_Dir -> ec2_download: "download during 6h window"
 
-# Local Testing Steps
-local_steps: "Local Testing Steps" {
+# Local Testing
+local_steps: "Local Testing" {
   style.fill: "#d4edda"
 
   instructions: {
     shape: sql_table
-    step1: "1. Trigger dump-pr-context workflow (uploads to EC2)"
-    step2: "2. Run: uv run rsync_from_ec2.py (downloads pipeline.db)"
+    step1: "1. Trigger dump-pr-context workflow"
+    step2: "2. Run: uv run rsync_from_ec2.py <repo> <pr>"
     step3: "3. Run scripts locally: uv run .github/codex/{script}.py"
     step4: "4. Or run codex locally to test prompts"
   }
 }
 
-ec2_download -> local_steps: "then"
-
-# Benefits
-benefits: "Benefits" {
-  style.fill: "#cce5ff"
-
-  items: {
-    shape: sql_table
-    fast: "Reuse existing EC2 instance"
-    iterate: "Rapid prompt/template iteration"
-    debug: "Test scripts individually"
-    persistent: "Context stored on EC2, download anytime"
-  }
-}
-
-local_steps -> benefits
+ec2_download -> local_steps

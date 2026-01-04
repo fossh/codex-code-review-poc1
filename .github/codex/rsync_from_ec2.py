@@ -1,12 +1,12 @@
 """
-Download pipeline.db from EC2 for local testing.
+Download files from EC2 for local testing.
 
 MUST HAVE REQUIREMENTS:
-- Read public_ip, ssh_private_key from environment or .env
-- Download pipeline.db from EC2 context path
-- Save to .github/tmp/pipeline.db
+- Read ssh_private_key from .env (CODEX_SSH_PRIVATE_KEY)
+- Download workdir from EC2
+- Save to .github/tmp/
 
-Usage: uv run rsync_from_ec2.py <repo_name> <pr_number>
+Usage: uv run rsync_from_ec2.py <public_ip> <repo_name> <pr_number>
 """
 
 import subprocess, tempfile, os, sys
@@ -16,11 +16,12 @@ from pathlib import Path
 # Parse args
 # ---------------------------------------------------------------------------
 
-repo_name = sys.argv[1]
-pr_number = sys.argv[2]
+public_ip = sys.argv[1]
+repo_name = sys.argv[2]
+pr_number = sys.argv[3]
 
 # ---------------------------------------------------------------------------
-# Load .env for SSH credentials
+# Load .env for SSH key
 # ---------------------------------------------------------------------------
 
 env_path = Path(__file__).parent.parent.parent / ".env"
@@ -29,7 +30,6 @@ for line in env_path.read_text().splitlines():
         key, val = line.split("=", 1)
         os.environ[key.strip()] = val.strip().strip("'\"")
 
-public_ip = os.environ["CODEX_EC2_IP"]
 ssh_private_key = os.environ["CODEX_SSH_PRIVATE_KEY"]
 
 # ---------------------------------------------------------------------------
@@ -42,22 +42,22 @@ os.close(key_fd)
 os.chmod(key_path, 0o600)
 
 # ---------------------------------------------------------------------------
-# Download pipeline.db from EC2
+# Download workdir from EC2
 # ---------------------------------------------------------------------------
 
-ec2_path = f"/home/ubuntu/context/{repo_name}/{pr_number}/pipeline.db"
-local_path = Path(__file__).parent.parent / "tmp" / "pipeline.db"
-local_path.parent.mkdir(parents=True, exist_ok=True)
+workdir = f"/home/ubuntu/{repo_name}/{pr_number}/"
+local_dir = Path(__file__).parent.parent / "tmp"
+local_dir.mkdir(parents=True, exist_ok=True)
 
 remote_host = f"ubuntu@{public_ip}"
 ssh_opts = ["-o", "StrictHostKeyChecking=no", "-i", key_path]
 
-print(f"Downloading {ec2_path} from {public_ip}...")
+print(f"Downloading {workdir} from {public_ip}...")
 subprocess.run(
     ["rsync", "-avz", "-e", f"ssh {' '.join(ssh_opts)}",
-     f"{remote_host}:{ec2_path}", str(local_path)],
+     f"{remote_host}:{workdir}", str(local_dir) + "/"],
     check=True
 )
 
 os.unlink(key_path)
-print(f"Downloaded to: {local_path}")
+print(f"Downloaded to: {local_dir}")

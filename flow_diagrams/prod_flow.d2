@@ -10,7 +10,7 @@ Trigger: {
 GHA: "codex-pr-review.yaml" {
   style.fill: "#e8f4f8"
 
-  checkout -> setup-uv -> init-db -> run_pipeline
+  checkout -> setup-uv -> init-db -> run_pipeline -> ssh-poweroff
 
   init-db: {
     shape: sql_table
@@ -96,17 +96,20 @@ Pipeline: "run_pipeline.py executes in order" {
     state: "PR review posted to GitHub"
   }
 
-  ssh_poweroff: {
-    shape: sql_table
-    inputs: "public_ip, ssh_private_key"
-    script: "ssh_poweroff.py"
-    outputs: "(none)"
-    state: "EC2 instance terminated"
-  }
-
   aws_launch_spot -> ssh_wait -> write_agents -> write_prompt
-  write_prompt -> rsync_to_ec2 -> ssh_run_codex -> ssh_poweroff
+  write_prompt -> rsync_to_ec2 -> ssh_run_codex
 }
+
+# SSH Poweroff (separate workflow step)
+ssh_poweroff: {
+  shape: sql_table
+  script: "ssh_poweroff.py"
+  inputs: "public_ip, ssh_private_key"
+  outputs: "(none)"
+  state: "EC2 instance powered off"
+}
+
+GHA.ssh-poweroff -> ssh_poweroff
 
 GHA.run_pipeline -> Pipeline
 
@@ -159,7 +162,7 @@ AWS: "AWS EC2 Spot" {
 
 Pipeline.aws_launch_spot -> AWS.instance: "launches"
 Pipeline.rsync_to_ec2 -> EC2_Dir: "uploads to"
-Pipeline.ssh_poweroff -> AWS.instance: "poweroff"
+ssh_poweroff -> AWS.instance: "poweroff"
 EC2_Dir -> AWS.instance: "on"
 
 # Codex Actions

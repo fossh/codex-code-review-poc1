@@ -20,7 +20,6 @@ scripts = [
     "003_write_prompt.py",
     "rsync_to_ec2.py",
     "ssh_run_codex.py",
-    "ssh_poweroff.py",
 ]
 
 # ---------------------------------------------------------------------------
