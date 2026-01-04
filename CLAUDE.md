@@ -55,13 +55,15 @@ s Comments should stay succinct; AGENTS.md already expects block separators, so 
 
 Architecture diagrams using D2 (https://d2lang.com):
 
+- Only use `sql_table` shape, no other shapes
+- No custom styles (no colors, fonts, themes)
 - `flow_diagrams/prod_flow.d2` - Production flow: GHA → Pipeline → EC2 → Codex → PR
 - `flow_diagrams/debug_flow.d2` - Local testing/debug flow
 
 Watch commands:
 ```bash
-d2 --watch --port 8080 --scale 0.65 flow_diagrams/prod_flow.d2 tmp/prod_flow.svg
-d2 --watch --port 8081 --scale 0.65 flow_diagrams/debug_flow.d2 tmp/debug_flow.svg
+d2 --watch --port 8080 --scale 0.7 flow_diagrams/prod_flow.d2 tmp/prod_flow.svg
+d2 --watch --port 8081 --scale 0.7 flow_diagrams/debug_flow.d2 tmp/debug_flow.svg
 ```
 
 - http://127.0.0.1:8080 - prod_flow
