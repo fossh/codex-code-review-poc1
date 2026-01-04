@@ -20,7 +20,7 @@ Trigger -> GHA
 Secrets: {
   shape: sql_table
   GITHUB_TOKEN: "auto-provided by GitHub"
-  CODEX_CONFIG: "JSON with ami_id, instance_type, key_name, security_group_id, region (ap-south-1), ssh_private_key, aws_creds"
+  CODEX_CONFIG: "JSON with ami_id, instance_type, key_name, security_group_id, region (ap-south-1), ssh_private_key, aws_creds, codex_auth_json"
 }
 
 Secrets -> GHA
@@ -63,8 +63,8 @@ write_prompt: {
 rsync_to_ec2: {
   shape: sql_table
   script: "rsync_to_ec2.py"
-  inputs: "public_ip, ssh_private_key, workdir"
-  outputs: "AGENTS.md + prompt.txt synced to EC2"
+  inputs: "public_ip, ssh_private_key, workdir, codex_auth_json"
+  outputs: "AGENTS.md, prompt.txt -> workdir; auth.json -> ~/.codex/"
 }
 
 ssh_run_codex: {
@@ -102,9 +102,10 @@ GHA -> DB: "init-db creates"
 EC2: {
   shape: sql_table
   ami: "ami-02f6ef44bfbfd81b1 (Mumbai)"
-  baked_in: "codex CLI, ~/.codex/auth.json"
+  baked_in: "codex CLI"
   workdir: "/home/ubuntu/{repo_name}/{pr_number}/"
-  rsynced: "AGENTS.md, prompt.txt"
+  rsynced_workdir: "AGENTS.md, prompt.txt"
+  rsynced_home: "~/.codex/auth.json"
 }
 
 rsync_to_ec2 -> EC2

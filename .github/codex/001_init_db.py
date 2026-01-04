@@ -72,6 +72,7 @@ config_values = [
     ("ssh_private_key", codex_config["ssh_private_key"]),
     ("aws_access_key_id", codex_config["aws_access_key_id"]),
     ("aws_secret_access_key", codex_config["aws_secret_access_key"]),
+    ("codex_auth_json", codex_config["codex_auth_json"]),
 ]
 
 cursor.executemany("INSERT INTO config (key, value) VALUES (?, ?)", config_values)
