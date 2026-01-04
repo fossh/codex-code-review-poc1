@@ -39,7 +39,7 @@ os.chmod(key_path, 0o600)
 # Run codex in workdir
 # ---------------------------------------------------------------------------
 
-codex_cmd = f"cd {config['workdir']} && codex exec -m gpt-5.2-codex --config model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check"
+codex_cmd = f"cd {config['workdir']} && cat prompt.txt | codex exec -m gpt-5.2-codex --config model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check"
 
 print(f"Running codex in {config['workdir']}...")
 result = subprocess.run(
