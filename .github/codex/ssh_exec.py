@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Run a command or script over SSH."""
+"""MUST HAVE REQUIREMENTS
+- Execute remote SSH commands by invoking `bash` with the provided script or inline command.
+- Accept host/user/identity details via CLI flags and avoid reading environment variables directly.
+"""
 from __future__ import annotations
 
 import argparse

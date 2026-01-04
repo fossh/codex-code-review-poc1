@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Wait for SSH connectivity."""
+"""MUST HAVE REQUIREMENTS
+- Poll SSH connectivity until the remote host accepts logins.
+- Accept host/user/identity details via CLI arguments and do not read environment variables.
+"""
 from __future__ import annotations
 
 import argparse

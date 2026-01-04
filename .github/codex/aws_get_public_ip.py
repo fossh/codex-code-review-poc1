@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Fetch the public IP of an EC2 instance."""
+"""MUST HAVE REQUIREMENTS
+- Return the public IP for the provided EC2 instance using CLI-provided AWS credentials.
+- Hard code region to ap-south-1 and avoid reading environment variables.
+"""
 from __future__ import annotations
 
 import argparse

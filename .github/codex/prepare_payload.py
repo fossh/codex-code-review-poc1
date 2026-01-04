@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Build a GitHub review payload from Codex output."""
+"""MUST HAVE REQUIREMENTS
+- Parse Codex stdout from the provided file and build a GitHub review payload.
+- Reject outputs missing inline comments or invalid JSON and write validation feedback.
+"""
 from __future__ import annotations
 
 import argparse

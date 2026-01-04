@@ -25,102 +25,55 @@ jobs:
       id-token: write
       contents: read
       pull-requests: write
-    env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || vars.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || vars.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN || vars.AWS_SESSION_TOKEN }}
-      CODEX_AMI_ID: ${{ secrets.CODEX_AMI_ID || vars.CODEX_AMI_ID }}
-      CODEX_EXISTING_INSTANCE_ID: ${{ secrets.CODEX_EXISTING_INSTANCE_ID || vars.CODEX_EXISTING_INSTANCE_ID }}
-      CODEX_EC2_SUBNET_ID: ${{ secrets.CODEX_EC2_SUBNET_ID || vars.CODEX_EC2_SUBNET_ID }}
-      CODEX_EC2_SECURITY_GROUP_IDS: ${{ secrets.CODEX_EC2_SECURITY_GROUP_IDS || vars.CODEX_EC2_SECURITY_GROUP_IDS }}
-      CODEX_EC2_KEY_NAME: ${{ secrets.CODEX_EC2_KEY_NAME || vars.CODEX_EC2_KEY_NAME }}
-      CODEX_INSTANCE_TYPE: ${{ secrets.CODEX_INSTANCE_TYPE || vars.CODEX_INSTANCE_TYPE }}
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: create-context-files
+      - name: run-codex-review
         env:
           GITHUB_CONTEXT: ${{ tojson(github) }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON || vars.CODEX_AUTH_JSON }}
           CODEX_ID_RSA: ${{ secrets.CODEX_ID_RSA || vars.CODEX_ID_RSA }}
-          PR_NUMBER: ${{ github.event.inputs.pr_number }}
-          SESSION_NAME: ${{ github.event.repository.name }}-${{ github.run_id }}
-          SPOT_INSTANCE_NAME: dev-aps1-ec2-codex-cli-${{ github.event.repository.name }}-${{ github.run_id }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID || vars.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY || vars.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN || vars.AWS_SESSION_TOKEN || '' }}
+          CODEX_AMI_ID: ${{ secrets.CODEX_AMI_ID || vars.CODEX_AMI_ID }}
+          CODEX_EXISTING_INSTANCE_ID: ${{ secrets.CODEX_EXISTING_INSTANCE_ID || vars.CODEX_EXISTING_INSTANCE_ID || '' }}
+          CODEX_EC2_SUBNET_ID: ${{ secrets.CODEX_EC2_SUBNET_ID || vars.CODEX_EC2_SUBNET_ID }}
+          CODEX_EC2_SECURITY_GROUP_IDS: ${{ secrets.CODEX_EC2_SECURITY_GROUP_IDS || vars.CODEX_EC2_SECURITY_GROUP_IDS }}
+          CODEX_EC2_KEY_NAME: ${{ secrets.CODEX_EC2_KEY_NAME || vars.CODEX_EC2_KEY_NAME }}
+          CODEX_INSTANCE_TYPE: ${{ secrets.CODEX_INSTANCE_TYPE || vars.CODEX_INSTANCE_TYPE }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number || '' }}
+          SESSION_NAME: codex-${{ github.event.repository.name }}-${{ github.run_id }}
+          INSTANCE_NAME: dev-ec2-codex-cli-${{ github.event.repository.name }}-${{ github.run_id }}
         run: |
+          set -euo pipefail
           mkdir -p .github/tmp
-          printf '%s' "$GITHUB_CONTEXT" > .github/tmp/github_context.json
-          printf '%s' "$GITHUB_TOKEN" > .github/tmp/github_token.txt
-          printf '%s' "$CODEX_AUTH_JSON" > .github/tmp/auth.json
-          printf '%s' "$CODEX_ID_RSA" > .github/tmp/id_rsa
-          chmod 600 .github/tmp/id_rsa
+          uv run .github/codex/write_context_files.py \
+            --out-dir .github/tmp \
+            --github-context "$GITHUB_CONTEXT" \
+            --github-token "$GITHUB_TOKEN" \
+            --codex-auth-json "$CODEX_AUTH_JSON" \
+            --codex-id-rsa "$CODEX_ID_RSA"
 
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-          import urllib.request
-
-          path = ".github/tmp/github_context.json"
-          with open(path, "r", encoding="utf-8") as handle:
-              ctx = json.load(handle)
-
-          event = ctx.get("event") or {}
-          pr = event.get("pull_request")
-          if pr:
-              sys.exit(0)
-
-          token_path = ".github/tmp/github_token.txt"
-          with open(token_path, "r", encoding="utf-8") as handle:
-              token = handle.read().strip()
-
-          repo = ctx.get("repository")
-          if not repo:
-              owner = ctx.get("repository_owner") or event.get("repository", {}).get("owner", {}).get("login", "")
-              name = event.get("repository", {}).get("name", "")
-              repo = f"{owner}/{name}" if owner and name else ""
-
-          if not repo:
-              raise SystemExit("Unable to determine repository from context.")
-
-          api_url = ctx.get("api_url") or "https://api.github.com"
-          pr_number = os.environ.get("PR_NUMBER", "").strip()
-          pr_data = None
-
-          def request_json(url):
-              req = urllib.request.Request(
-                  url,
-                  headers={
-                      "Authorization": f"Bearer {token}",
-                      "Accept": "application/vnd.github+json",
-                      "User-Agent": "codex-cli-review-bot",
-                  },
-              )
-              with urllib.request.urlopen(req) as resp:
-                  return json.loads(resp.read().decode("utf-8"))
-
-          if pr_number:
-              pr_data = request_json(f"{api_url}/repos/{repo}/pulls/{pr_number}")
-          else:
-              ref_name = ctx.get("ref_name") or ctx.get("ref", "").split("/")[-1]
-              if not ref_name:
-                  raise SystemExit("Unable to determine ref name for PR lookup.")
-              owner = repo.split("/", 1)[0]
-              prs = request_json(
-                  f"{api_url}/repos/{repo}/pulls?state=open&head={owner}:{ref_name}"
-              )
-              if prs:
-                  pr_data = prs[0]
-
-          if not pr_data:
-              raise SystemExit("Unable to resolve pull request for workflow_dispatch run.")
-
-          event["pull_request"] = pr_data
-          ctx["event"] = event
-          with open(path, "w", encoding="utf-8") as handle:
-              json.dump(ctx, handle)
-          PY
+          uv run .github/codex/run_review.py \
+            --tmp-dir .github/tmp \
+            --context-path .github/tmp/github_context.json \
+            --token-path .github/tmp/github_token.txt \
+            --auth-path .github/tmp/auth.json \
+            --ssh-key-path .github/tmp/id_rsa \
+            --pr-number "$PR_NUMBER" \
+            --session-name "$SESSION_NAME" \
+            --instance-name "$INSTANCE_NAME" \
+            --ami-id "$CODEX_AMI_ID" \
+            --instance-type "$CODEX_INSTANCE_TYPE" \
+            --subnet-id "$CODEX_EC2_SUBNET_ID" \
+            --security-group-ids "$CODEX_EC2_SECURITY_GROUP_IDS" \
+            --key-name "$CODEX_EC2_KEY_NAME" \
+            --aws-access-key-id "$AWS_ACCESS_KEY_ID" \
+            --aws-secret-access-key "$AWS_SECRET_ACCESS_KEY" \
+            --aws-session-token "$AWS_SESSION_TOKEN" \
+            --existing-instance-id "$CODEX_EXISTING_INSTANCE_ID"
 
       - name: run-codex-review
         env:

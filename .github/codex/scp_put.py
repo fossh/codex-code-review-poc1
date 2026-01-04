@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Copy a local file to a remote host via scp."""
+"""MUST HAVE REQUIREMENTS
+- Copy a local file to the remote host using scp and the provided key.
+- Do not rely on environment variables; accept destination details via CLI options only.
+"""
 from __future__ import annotations
 
 import argparse

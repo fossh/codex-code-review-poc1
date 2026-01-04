@@ -1,22 +1,13 @@
 #!/usr/bin/env python3
-"""Wait for an EC2 instance to reach a given state."""
-from __future__ import annotations
+"""MUST HAVE REQUIREMENTS
+- Wait for an EC2 instance to reach the requested state.
+- Use AWS region ap-south-1.
+"""
 
 import argparse
 import subprocess
 
 AWS_REGION = "ap-south-1"
-
-
-def build_env(access_key: str, secret_key: str, session_token: str | None) -> dict[str, str]:
-    env = {
-        "AWS_ACCESS_KEY_ID": access_key,
-        "AWS_SECRET_ACCESS_KEY": secret_key,
-    }
-    if session_token:
-        env["AWS_SESSION_TOKEN"] = session_token
-    return env
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--instance-id", required=True)
@@ -25,6 +16,13 @@ parser.add_argument("--aws-access-key-id", required=True)
 parser.add_argument("--aws-secret-access-key", required=True)
 parser.add_argument("--aws-session-token")
 args = parser.parse_args()
+
+env = {
+    "AWS_ACCESS_KEY_ID": args.aws_access_key_id,
+    "AWS_SECRET_ACCESS_KEY": args.aws_secret_access_key,
+}
+if args.aws_session_token:
+    env["AWS_SESSION_TOKEN"] = args.aws_session_token
 
 cmd = [
     "aws",
@@ -37,8 +35,4 @@ cmd = [
     args.instance_id,
 ]
 
-subprocess.run(
-    cmd,
-    check=True,
-    env=build_env(args.aws_access_key_id, args.aws_secret_access_key, args.aws_session_token),
-)
+subprocess.run(cmd, check=True, env=env)

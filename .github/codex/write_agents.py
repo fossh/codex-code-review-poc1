@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Write AGENTS.md with review instructions."""
-from __future__ import annotations
+"""MUST HAVE REQUIREMENTS
+- Write the Codex review AGENTS.md content to --output-path.
+- Do not read environment variables.
+"""
 
 import argparse
 from pathlib import Path
-
 
 AGENTS_TEXT = """## Codex Review Agent
 
@@ -40,14 +41,9 @@ You are running a pull-request code review. Focus on correctness, security, and 
 - If you cannot anchor a finding to a changed line, omit that finding from the body.
 """
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--output-path", required=True)
+args = parser.parse_args()
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--output-path", required=True)
-    args = parser.parse_args()
-
-    Path(args.output_path).write_text(AGENTS_TEXT, encoding="utf-8")
-
-
-if __name__ == "__main__":
-    main()
+# Single write to keep the script tiny and predictable.
+Path(args.output_path).write_text(AGENTS_TEXT, encoding="utf-8")

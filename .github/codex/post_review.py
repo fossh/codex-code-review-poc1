@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Post a pull request review via GitHub API."""
+"""MUST HAVE REQUIREMENTS
+- Post the validated payload to the GitHub reviews API for the given PR.
+- Consume only CLI args (context, token, payload paths) and avoid other I/O.
+"""
 from __future__ import annotations
 
 import argparse
