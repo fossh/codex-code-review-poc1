@@ -56,6 +56,7 @@ for ATTEMPT in $(seq 1 "$MAX_ATTEMPTS"); do
     fi
 
     log "Running Codex (attempt $ATTEMPT)"
+    cd "$REPO_ROOT"  # Codex reads AGENTS.md from current directory
     if timeout 10m codex exec -m gpt-5.2-codex \
         --config model_reasoning_effort=high \
         --dangerously-bypass-approvals-and-sandbox \
