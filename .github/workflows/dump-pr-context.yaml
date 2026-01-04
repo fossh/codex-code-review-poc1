@@ -1,18 +1,15 @@
-name: v2-codex-review
+name: dump-pr-context
 
 on:
-  pull_request:
-    branches: [v2]
-    types: [opened, reopened, synchronize]
   workflow_dispatch:
     inputs:
       pr_number:
-        description: PR number to review
+        description: PR number to get context for
         required: true
         type: string
 
 jobs:
-  review:
+  dump-context:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,18 +18,16 @@ jobs:
         env:
           GITHUB_CONTEXT: ${{ toJson(github) }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
         run: |
           set -euo pipefail
 
           DB=".github/tmp/pipeline.db"
           mkdir -p .github/tmp
 
-          # Write context to files
           printf '%s' "$GITHUB_CONTEXT" > .github/tmp/github.json
           printf '%s' "$GITHUB_TOKEN" > .github/tmp/token.txt
 
-          # Initialize DB and dump context
           sqlite3 "$DB" <<SQL
           CREATE TABLE IF NOT EXISTS config (
               id INTEGER PRIMARY KEY,
@@ -54,7 +49,6 @@ jobs:
           INSERT INTO config VALUES(NULL, 'pr_number', '$PR_NUMBER');
           SQL
 
-          # Verify
           echo "=== Config ==="
           sqlite3 "$DB" "SELECT key, substr(value, 1, 50) FROM config;"
           echo "=== Dumps ==="

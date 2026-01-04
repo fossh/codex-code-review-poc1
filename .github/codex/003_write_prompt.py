@@ -25,7 +25,8 @@ db_path = parser.parse_args().db_path
 
 conn = sqlite3.connect(db_path)
 cursor = conn.execute("SELECT content FROM dumps WHERE category = 'json' AND name = 'github'")
-github_ctx = json.loads(cursor.fetchone()[0])
+github_raw = cursor.fetchone()[0]
+github_ctx = json.loads(github_raw.decode() if isinstance(github_raw, bytes) else github_raw)
 
 # ---------------------------------------------------------------------------
 # Render template

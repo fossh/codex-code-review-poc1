@@ -9,3 +9,5 @@ tmp/
 # Local debug files
 .tmp/
 .local-debug/
+AGENTS.md
+.github/tmp/

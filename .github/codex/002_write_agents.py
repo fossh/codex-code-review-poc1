@@ -32,10 +32,12 @@ cursor = conn.execute("SELECT value FROM config WHERE key = 'pr_number'")
 pr_number = cursor.fetchone()[0]
 
 cursor = conn.execute("SELECT content FROM dumps WHERE category = 'json' AND name = 'github'")
-github_ctx = json.loads(cursor.fetchone()[0])
+github_raw = cursor.fetchone()[0]
+github_ctx = json.loads(github_raw.decode() if isinstance(github_raw, bytes) else github_raw)
 
 cursor = conn.execute("SELECT content FROM dumps WHERE category = 'secret' AND name = 'github_token'")
-github_token = cursor.fetchone()[0].strip()
+token_raw = cursor.fetchone()[0]
+github_token = (token_raw.decode() if isinstance(token_raw, bytes) else token_raw).strip()
 
 # ---------------------------------------------------------------------------
 # Render template
