@@ -7,7 +7,7 @@ MUST HAVE REQUIREMENTS:
 - Insert all config into DB
 """
 
-import sqlite3, json, sys
+import sqlite3, json, sys, os
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
