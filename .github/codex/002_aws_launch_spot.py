@@ -8,7 +8,7 @@ MUST HAVE REQUIREMENTS:
 - Write instance_id and public_ip back to DB
 """
 
-import boto3, sqlite3, sys
+import boto3, sqlite3, sys, time
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -60,10 +60,15 @@ waiter.wait(InstanceIds=[instance_id])
 print("Instance is running")
 
 # ---------------------------------------------------------------------------
-# Get public IP and write to DB
+# Wait for public IP assignment
 # ---------------------------------------------------------------------------
 
+time.sleep(2)
 desc = ec2.describe_instances(InstanceIds=[instance_id])
+if not desc["Reservations"][0]["Instances"][0].get("PublicIpAddress"):
+    time.sleep(5)
+    desc = ec2.describe_instances(InstanceIds=[instance_id])
+
 public_ip = desc["Reservations"][0]["Instances"][0]["PublicIpAddress"]
 print(f"Public IP: {public_ip}")
 
