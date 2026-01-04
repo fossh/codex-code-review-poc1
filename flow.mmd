@@ -1,0 +1,91 @@
+flowchart TD
+    subgraph Trigger["Trigger Events"]
+        T1["pull_request to v2"]
+        T2["workflow_dispatch"]
+    end
+
+    T1 --> GHA
+    T2 --> GHA
+
+    subgraph GHA["GitHub Actions Workflow"]
+        A["checkout"]
+        B["dump-context-to-sqlite"]
+    end
+
+    A --> B
+
+    subgraph DumpInputs["Workflow Inputs"]
+        I1["GITHUB_CONTEXT"]
+        I2["GITHUB_TOKEN"]
+        I3["GITHUB_EVENT_PATH"]
+        I4["PR_NUMBER"]
+    end
+
+    I1 --> B
+    I2 --> B
+    I3 --> B
+    I4 --> B
+
+    subgraph DB["pipeline.db"]
+        subgraph DumpsTable["dumps table"]
+            D1["json, github"]
+            D2["json, event"]
+            D3["secret, github_token"]
+        end
+        subgraph ConfigTable["config table"]
+            C1["repo_root"]
+            C2["pr_number"]
+            C3["agents_md"]
+            C4["prompt"]
+        end
+    end
+
+    B --> DumpsTable
+    B --> C1
+    B --> C2
+
+    subgraph Templates["Jinja2 Templates"]
+        J1["agents.md.j2"]
+        J2["prompt.txt.j2"]
+    end
+
+    subgraph Scripts["Python Scripts"]
+        subgraph S1["001_init_db.py"]
+            S1_out["Creates tables"]
+        end
+
+        subgraph S2["002_write_agents.py"]
+            S2_read["reads: repo_root, github, token"]
+            S2_render["renders: agents.md.j2"]
+            S2_write["writes: AGENTS.md"]
+        end
+
+        subgraph S3["003_write_prompt.py"]
+            S3_read["reads: github context"]
+            S3_render["renders: prompt.txt.j2"]
+            S3_write["writes: prompt"]
+        end
+
+        subgraph S4["004_run_codex.py"]
+            S4_read["reads: repo_root, prompt"]
+            S4_exec["runs: codex in repo"]
+        end
+    end
+
+    J1 --> S2_render
+    J2 --> S3_render
+
+    ConfigTable --> S1
+    S1 --> S2
+    S2 --> S3
+    S3 --> S4
+
+    subgraph CodexDoes["Codex Handles Everything"]
+        CD1["Reviews PR changes"]
+        CD2["Formats review payload"]
+        CD3["POSTs to GitHub API"]
+    end
+
+    S4 --> CodexDoes
+    CodexDoes --> GitHub["GitHub API"]
+    GitHub --> PR["Review Posted"]
