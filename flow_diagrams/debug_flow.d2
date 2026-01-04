@@ -84,9 +84,9 @@ dump_workflow -> ssh_poweroff
 EC2: {
   shape: sql_table
   ami: "ami-02f6ef44bfbfd81b1 (Mumbai)"
-  preinstalled: "codex CLI, ~/.codex/auth.json"
+  baked_in: "codex CLI, ~/.codex/auth.json"
   workdir: "/home/ubuntu/{repo_name}/{pr_number}/"
-  uploaded: "AGENTS.md, prompt.txt"
+  rsynced: "AGENTS.md, prompt.txt"
 }
 
 rsync_to_ec2 -> EC2
