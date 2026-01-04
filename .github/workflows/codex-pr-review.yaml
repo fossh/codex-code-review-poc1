@@ -1,0 +1,42 @@
+name: codex-pr-review
+
+on:
+  pull_request:
+    branches: [v2]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to review
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_CONTEXT: ${{ toJson(github) }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CODEX_CONFIG: ${{ secrets.CODEX_CONFIG }}
+      PR_NUMBER: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+    defaults:
+      run:
+        working-directory: .github/codex
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: init-db
+        run: uv run 001_init_db.py --db db.sqlite3
+
+      - name: run-pipeline
+        run: uv run run_pipeline.py
+
+      - name: ssh-poweroff
+        if: always()
+        run: uv run 009_ssh_poweroff.py --db db.sqlite3

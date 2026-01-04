@@ -1,0 +1,189 @@
+direction: down
+
+# Trigger Events
+Trigger: {
+  shape: sql_table
+  pull_request: "to v2 branch"
+  workflow_dispatch: "manual trigger"
+}
+
+# GitHub Actions Workflow
+GHA: {
+  shape: sql_table
+  name: "codex-pr-review.yaml"
+  step1: "checkout"
+  step2: "setup-uv"
+  step3: "init-db"
+  step4: "run_pipeline"
+  step5: "ssh-poweroff"
+}
+
+Trigger -> GHA
+
+# Secrets
+Secrets: {
+  shape: sql_table
+  GITHUB_TOKEN: "auto-provided"
+  CODEX_CONFIG: "JSON object"
+  cc_ami_id: "ami-02f6ef44bfbfd81b1"
+  cc_instance_type: "t3.medium"
+  cc_key_name: "codex-review"
+  cc_security_group_id: "sg-xxx"
+  cc_region: "ap-south-1"
+  cc_ssh_private_key: "RSA key"
+  cc_aws_creds: "access_key, secret_key"
+  cc_codex_auth_json: "OpenAI tokens"
+}
+
+Secrets -> GHA
+
+# Pipeline Scripts
+Pipeline: {
+  shape: sql_table
+  name: "run_pipeline.py"
+  step1: "002_aws_launch_spot"
+  step2: "003_ssh_wait"
+  step3: "004_write_agents"
+  step4: "005_write_prompt"
+  step5: "006_rsync_to_ec2"
+  step6: "007_ssh_run_codex"
+}
+
+aws_launch_spot: {
+  shape: sql_table
+  script: "002_aws_launch_spot.py"
+  arg_db: "--db db.sqlite3"
+  in_ami_id: "ami-02f6ef44bfbfd81b1"
+  in_instance_type: "t3.medium"
+  in_region: "ap-south-1"
+  in_key_name: "codex-review"
+  in_security_group_id: "sg-xxx"
+  in_aws_creds: "access_key, secret_key"
+  out_instance_id: "i-xxx"
+  out_public_ip: "x.x.x.x"
+}
+
+ssh_wait: {
+  shape: sql_table
+  script: "003_ssh_wait.py"
+  arg_db: "--db db.sqlite3"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  output: "(none)"
+}
+
+write_agents: {
+  shape: sql_table
+  script: "004_write_agents.py"
+  arg_db: "--db db.sqlite3"
+  in_workdir: "/home/ubuntu/{repo}/{pr}/"
+  in_pr_number: "123"
+  in_github_context: "dumps.github"
+  in_github_token: "dumps.github_token"
+  out_agents_md: "string"
+  out_file: "AGENTS.md"
+}
+
+write_prompt: {
+  shape: sql_table
+  script: "005_write_prompt.py"
+  arg_db: "--db db.sqlite3"
+  in_github_context: "dumps.github"
+  out_prompt: "string"
+  out_file: "prompt.txt"
+}
+
+rsync_to_ec2: {
+  shape: sql_table
+  script: "006_rsync_to_ec2.py"
+  arg_db: "--db db.sqlite3"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  in_workdir: "/home/ubuntu/{repo}/{pr}/"
+  in_codex_auth_json: "OpenAI tokens"
+  out_workdir: "AGENTS.md, prompt.txt"
+  out_home: "~/.codex/auth.json"
+}
+
+ssh_run_codex: {
+  shape: sql_table
+  script: "007_ssh_run_codex.py"
+  arg_db: "--db db.sqlite3"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  in_workdir: "/home/ubuntu/{repo}/{pr}/"
+  cmd: "cat prompt.txt | codex exec ..."
+  output: "PR review posted"
+}
+
+ssh_poweroff: {
+  shape: sql_table
+  script: "009_ssh_poweroff.py"
+  arg_db: "--db db.sqlite3"
+  condition: "if: always()"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  output: "EC2 powered off"
+}
+
+GHA -> Pipeline
+Pipeline -> aws_launch_spot -> ssh_wait -> write_agents -> write_prompt
+write_prompt -> rsync_to_ec2 -> ssh_run_codex
+GHA -> ssh_poweroff
+
+# SQLite DB
+DB: {
+  shape: sql_table
+  path: ".github/codex/db.sqlite3"
+  table1: "config"
+  config_workdir: "/home/ubuntu/{repo}/{pr}/"
+  config_pr_number: "123"
+  config_repo: "owner/repo"
+  config_ami_id: "ami-xxx"
+  config_instance_type: "t3.medium"
+  config_region: "ap-south-1"
+  config_ssh_private_key: "RSA key"
+  config_aws_creds: "keys"
+  config_codex_auth_json: "tokens"
+  config_instance_id: "(runtime)"
+  config_public_ip: "(runtime)"
+  table2: "dumps"
+  dumps_github: "JSON context"
+  dumps_github_token: "ghp_xxx"
+}
+
+GHA -> DB: "init-db creates"
+
+# EC2 Instance
+EC2: {
+  shape: sql_table
+  ami: "ami-02f6ef44bfbfd81b1"
+  region: "ap-south-1 (Mumbai)"
+  baked_in: "codex CLI"
+  workdir: "/home/ubuntu/{repo}/{pr}/"
+  rsynced_workdir: "AGENTS.md"
+  rsynced_workdir2: "prompt.txt"
+  rsynced_home: "~/.codex/auth.json"
+}
+
+rsync_to_ec2 -> EC2
+
+# Codex Actions
+Codex: {
+  shape: sql_table
+  step1: "Reads AGENTS.md"
+  step2: "Clones repo"
+  step3: "Checkouts PR"
+  step4: "Reviews diff"
+  step5: "POSTs review to GitHub"
+}
+
+ssh_run_codex -> Codex
+
+# Final Output
+PR_Review: {
+  shape: sql_table
+  output: "Review posted on PR"
+}
+
+Codex -> PR_Review

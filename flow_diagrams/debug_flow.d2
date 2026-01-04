@@ -1,0 +1,153 @@
+direction: down
+
+# Debug/Local Testing Flow
+
+# Trigger
+Trigger: {
+  shape: sql_table
+  event: "workflow_dispatch"
+  input: "pr_number"
+}
+
+# Dump Workflow
+dump_workflow: {
+  shape: sql_table
+  name: "dump-pr-context.yaml"
+  step1: "checkout"
+  step2: "setup-uv"
+  step3: "init-db"
+  step4: "run-debug-pipeline"
+  step5: "ssh-poweroff"
+}
+
+Trigger -> dump_workflow
+
+# Debug Pipeline
+Pipeline: {
+  shape: sql_table
+  name: "run_debug_pipeline.py"
+  step1: "002_aws_launch_spot"
+  step2: "003_ssh_wait"
+  step3: "004_write_agents"
+  step4: "005_write_prompt"
+  step5: "006_rsync_to_ec2"
+  step6: "sleep_6h"
+}
+
+aws_launch_spot: {
+  shape: sql_table
+  script: "002_aws_launch_spot.py"
+  arg_db: "--db db.sqlite3"
+  in_ami_id: "ami-02f6ef44bfbfd81b1"
+  in_instance_type: "t3.medium"
+  in_region: "ap-south-1"
+  in_key_name: "codex-review"
+  in_security_group_id: "sg-xxx"
+  in_aws_creds: "access_key, secret_key"
+  out_instance_id: "i-xxx"
+  out_public_ip: "x.x.x.x"
+}
+
+ssh_wait: {
+  shape: sql_table
+  script: "003_ssh_wait.py"
+  arg_db: "--db db.sqlite3"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  output: "(none)"
+}
+
+write_agents: {
+  shape: sql_table
+  script: "004_write_agents.py"
+  arg_db: "--db db.sqlite3"
+  in_workdir: "/home/ubuntu/{repo}/{pr}/"
+  in_pr_number: "123"
+  in_github_context: "dumps.github"
+  in_github_token: "dumps.github_token"
+  out_agents_md: "string"
+  out_file: "AGENTS.md"
+}
+
+write_prompt: {
+  shape: sql_table
+  script: "005_write_prompt.py"
+  arg_db: "--db db.sqlite3"
+  in_github_context: "dumps.github"
+  out_prompt: "string"
+  out_file: "prompt.txt"
+}
+
+rsync_to_ec2: {
+  shape: sql_table
+  script: "006_rsync_to_ec2.py"
+  arg_db: "--db db.sqlite3"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  in_workdir: "/home/ubuntu/{repo}/{pr}/"
+  in_codex_auth_json: "OpenAI tokens"
+  out_workdir: "AGENTS.md, prompt.txt"
+  out_home: "~/.codex/auth.json"
+}
+
+sleep_6h: {
+  shape: sql_table
+  script: "(inline)"
+  cmd: "time.sleep(21600)"
+  purpose: "Keep token active"
+  duration: "6 hours"
+}
+
+ssh_poweroff: {
+  shape: sql_table
+  script: "009_ssh_poweroff.py"
+  arg_db: "--db db.sqlite3"
+  condition: "if: always()"
+  in_public_ip: "x.x.x.x"
+  in_ssh_private_key: "RSA key"
+  output: "EC2 powered off"
+}
+
+dump_workflow -> Pipeline
+Pipeline -> aws_launch_spot -> ssh_wait -> write_agents -> write_prompt
+write_prompt -> rsync_to_ec2 -> sleep_6h
+dump_workflow -> ssh_poweroff
+
+# EC2 Instance
+EC2: {
+  shape: sql_table
+  ami: "ami-02f6ef44bfbfd81b1"
+  region: "ap-south-1 (Mumbai)"
+  baked_in: "codex CLI"
+  workdir: "/home/ubuntu/{repo}/{pr}/"
+  rsynced_workdir: "AGENTS.md"
+  rsynced_workdir2: "prompt.txt"
+  rsynced_home: "~/.codex/auth.json"
+}
+
+rsync_to_ec2 -> EC2
+
+# Local Download
+rsync_from_ec2: {
+  shape: sql_table
+  script: "008_rsync_from_ec2.py"
+  arg_db: "--db db.sqlite3"
+  in_public_ip: "from db"
+  in_ssh_private_key: "from db"
+  in_workdir: "from db"
+  out_local: "tmp/"
+}
+
+EC2 -> rsync_from_ec2: "download during 6h"
+
+# Local Testing Instructions
+local_testing: {
+  shape: sql_table
+  step1: "Trigger workflow"
+  step2: "Copy EC2 IP from logs"
+  step3: "Run rsync_from_ec2.py"
+  step4: "Test scripts locally"
+  step5: "Or run codex manually"
+}
+
+rsync_from_ec2 -> local_testing
