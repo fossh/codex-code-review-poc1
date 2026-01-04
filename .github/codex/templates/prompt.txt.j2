@@ -17,10 +17,11 @@ git checkout pr-{{ pr_number }}
 
 ## Step 3: Review the changes
 
-View the diff against {{ base_ref }}:
+- View the diff against {{ base_ref }}:
 ```bash
 git diff origin/{{ base_ref }}...HEAD
 ```
+- Only only on these changes and its impact, dont review code already committed to base, code review purpose is to review new changes.
 
 ## Step 4: Post your review
 
