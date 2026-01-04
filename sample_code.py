@@ -1,4 +1,5 @@
 def calculate_total(items):
+    """Calculate total price for all items."""
     total = 0
     for item in items:
         total = total + item['price'] * item['qty']
