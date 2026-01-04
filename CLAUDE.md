@@ -51,8 +51,20 @@ s Comments should stay succinct; AGENTS.md already expects block separators, so 
 - For local testing, use files from tmp folder.
 - For GitHub Actions, secrets are used instead.
 
-## Update flow.d2
-- It represents the code flow and architecture using D2 (https://d2lang.com).
-- Run `d2 --watch --port 8080 --scale 0.65 flow.d2 tmp/flow.svg` to view diagram at localhost:8080.
-- After any change in requirement or something thats important, update flow.d2.
-- Keep this updated to reflect the codebase.
+## D2 Diagrams (flow_diagrams/)
+
+Architecture diagrams using D2 (https://d2lang.com):
+
+- `flow_diagrams/prod_flow.d2` - Production flow: GHA → Pipeline → EC2 → Codex → PR
+- `flow_diagrams/debug_flow.d2` - Local testing/debug flow
+
+Watch commands:
+```bash
+d2 --watch --port 8080 --scale 0.65 flow_diagrams/prod_flow.d2 tmp/prod_flow.svg
+d2 --watch --port 8081 --scale 0.65 flow_diagrams/debug_flow.d2 tmp/debug_flow.svg
+```
+
+- http://127.0.0.1:8080 - prod_flow
+- http://127.0.0.1:8081 - debug_flow
+
+Keep these updated to reflect the codebase.
