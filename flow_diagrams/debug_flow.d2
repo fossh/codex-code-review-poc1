@@ -1,0 +1,89 @@
+direction: down
+
+# Local Testing Flow for Rapid Iteration
+
+title: "Local Testing Flow" {
+  style.fill: "#f0f0f0"
+}
+
+# Trigger
+trigger: "workflow_dispatch (manual)" {
+  style.fill: "#e0e0e0"
+}
+
+# Dump Workflow
+dump_workflow: "dump-pr-context.yaml" {
+  style.fill: "#e8f4f8"
+  checkout -> setup-uv -> init-db -> upload-to-ec2
+}
+
+trigger -> dump_workflow
+
+# Workflow Details
+dump_details: {
+  shape: sql_table
+  purpose: "Dumps GHA context to DB and uploads to EC2"
+  flow: "init-db → rsync_to_ec2.py"
+  ec2_path: "/home/ubuntu/context/{repo_name}/{pr_number}/pipeline.db"
+}
+
+# EC2 Upload Step
+ec2_upload: {
+  shape: sql_table
+  script: "rsync_to_ec2.py"
+  inputs: "public_ip, ssh_private_key, local pipeline.db"
+  outputs: "(none)"
+  state: "pipeline.db uploaded to EC2"
+}
+
+dump_workflow -> ec2_upload: "runs"
+
+# EC2 Storage
+EC2_Storage: "EC2 Context Storage" {
+  style.fill: "#ff9900"
+  path: "/home/ubuntu/context/{repo_name}/{pr_number}/"
+  content: "pipeline.db (full GHA context)"
+}
+
+ec2_upload -> EC2_Storage: "uploads"
+
+# EC2 Download Step
+ec2_download: {
+  shape: sql_table
+  script: "rsync_from_ec2.py"
+  inputs: "public_ip, ssh_private_key, ec2_path"
+  outputs: ".github/tmp/pipeline.db"
+  state: "pipeline.db downloaded locally"
+}
+
+EC2_Storage -> ec2_download: "downloads"
+
+# Local Testing Steps
+local_steps: "Local Testing Steps" {
+  style.fill: "#d4edda"
+
+  instructions: {
+    shape: sql_table
+    step1: "1. Trigger dump-pr-context workflow (uploads to EC2)"
+    step2: "2. Run: uv run rsync_from_ec2.py (downloads pipeline.db)"
+    step3: "3. Run scripts locally: uv run .github/codex/{script}.py"
+    step4: "4. Or run codex locally to test prompts"
+  }
+}
+
+ec2_download -> local_steps: "then"
+
+# Benefits
+benefits: "Benefits" {
+  style.fill: "#cce5ff"
+
+  items: {
+    shape: sql_table
+    fast: "Reuse existing EC2 instance"
+    iterate: "Rapid prompt/template iteration"
+    debug: "Test scripts individually"
+    persistent: "Context stored on EC2, download anytime"
+  }
+}
+
+local_steps -> benefits
