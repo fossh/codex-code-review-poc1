@@ -33,6 +33,16 @@ MAX_ATTEMPTS="${MAX_ATTEMPTS:-2}"
 log() { printf '[codex-review] %s\n' "$*"; }
 
 # ---------------------------------------------------------------------------
+# Step 0: Ensure uv is available
+# ---------------------------------------------------------------------------
+
+if ! command -v uv &> /dev/null; then
+    log "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+# ---------------------------------------------------------------------------
 # Step 1: Setup - Copy context files into repo for Codex access
 # ---------------------------------------------------------------------------
 
