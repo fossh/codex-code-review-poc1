@@ -14,12 +14,12 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 scripts = [
-    "aws_launch_spot.py",
-    "ssh_wait.py",
-    "002_write_agents.py",
-    "003_write_prompt.py",
-    "rsync_to_ec2.py",
-    "ssh_run_codex.py",
+    "002_aws_launch_spot.py",
+    "003_ssh_wait.py",
+    "004_write_agents.py",
+    "005_write_prompt.py",
+    "006_rsync_to_ec2.py",
+    "007_ssh_run_codex.py",
 ]
 
 # ---------------------------------------------------------------------------

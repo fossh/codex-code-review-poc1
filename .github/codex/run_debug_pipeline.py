@@ -15,11 +15,11 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 scripts = [
-    "aws_launch_spot.py",
-    "ssh_wait.py",
-    "002_write_agents.py",
-    "003_write_prompt.py",
-    "rsync_to_ec2.py",
+    "002_aws_launch_spot.py",
+    "003_ssh_wait.py",
+    "004_write_agents.py",
+    "005_write_prompt.py",
+    "006_rsync_to_ec2.py",
 ]
 
 # ---------------------------------------------------------------------------
@@ -53,7 +53,7 @@ conn.close()
 
 print("=== Sleeping 6 hours (token active for local testing) ===")
 print(f"EC2 IP: {public_ip}")
-print(f"Download with: uv run .github/codex/rsync_from_ec2.py {public_ip} {repo_name} {pr_number}")
+print(f"Download with: uv run .github/codex/008_rsync_from_ec2.py {public_ip} {repo_name} {pr_number}")
 time.sleep(21600)
 
 print("=== Debug pipeline complete ===")

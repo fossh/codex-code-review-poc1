@@ -41,17 +41,17 @@ Secrets -> GHA
 Pipeline: {
   shape: sql_table
   name: "run_pipeline.py"
-  step1: "aws_launch_spot"
-  step2: "ssh_wait"
-  step3: "write_agents"
-  step4: "write_prompt"
-  step5: "rsync_to_ec2"
-  step6: "ssh_run_codex"
+  step1: "002_aws_launch_spot"
+  step2: "003_ssh_wait"
+  step3: "004_write_agents"
+  step4: "005_write_prompt"
+  step5: "006_rsync_to_ec2"
+  step6: "007_ssh_run_codex"
 }
 
 aws_launch_spot: {
   shape: sql_table
-  script: "aws_launch_spot.py"
+  script: "002_aws_launch_spot.py"
   in_ami_id: "ami-02f6ef44bfbfd81b1"
   in_instance_type: "t3.medium"
   in_region: "ap-south-1"
@@ -64,7 +64,7 @@ aws_launch_spot: {
 
 ssh_wait: {
   shape: sql_table
-  script: "ssh_wait.py"
+  script: "003_ssh_wait.py"
   in_public_ip: "x.x.x.x"
   in_ssh_private_key: "RSA key"
   output: "(none)"
@@ -72,7 +72,7 @@ ssh_wait: {
 
 write_agents: {
   shape: sql_table
-  script: "002_write_agents.py"
+  script: "004_write_agents.py"
   in_workdir: "/home/ubuntu/{repo}/{pr}/"
   in_pr_number: "123"
   in_github_context: "dumps.github"
@@ -83,7 +83,7 @@ write_agents: {
 
 write_prompt: {
   shape: sql_table
-  script: "003_write_prompt.py"
+  script: "005_write_prompt.py"
   in_github_context: "dumps.github"
   out_prompt: "string"
   out_file: "prompt.txt"
@@ -91,7 +91,7 @@ write_prompt: {
 
 rsync_to_ec2: {
   shape: sql_table
-  script: "rsync_to_ec2.py"
+  script: "006_rsync_to_ec2.py"
   in_public_ip: "x.x.x.x"
   in_ssh_private_key: "RSA key"
   in_workdir: "/home/ubuntu/{repo}/{pr}/"
@@ -102,7 +102,7 @@ rsync_to_ec2: {
 
 ssh_run_codex: {
   shape: sql_table
-  script: "ssh_run_codex.py"
+  script: "007_ssh_run_codex.py"
   in_public_ip: "x.x.x.x"
   in_ssh_private_key: "RSA key"
   in_workdir: "/home/ubuntu/{repo}/{pr}/"
@@ -112,7 +112,7 @@ ssh_run_codex: {
 
 ssh_poweroff: {
   shape: sql_table
-  script: "ssh_poweroff.py"
+  script: "009_ssh_poweroff.py"
   condition: "if: always()"
   in_public_ip: "x.x.x.x"
   in_ssh_private_key: "RSA key"

@@ -57,6 +57,7 @@ Architecture diagrams using D2 (https://d2lang.com):
 
 - Only use `sql_table` shape, no other shapes
 - No custom styles (no colors, fonts, themes)
+- Make sure table is longer not wider, so add more rows if that makes table longer.
 - `flow_diagrams/prod_flow.d2` - Production flow: GHA → Pipeline → EC2 → Codex → PR
 - `flow_diagrams/debug_flow.d2` - Local testing/debug flow
 
