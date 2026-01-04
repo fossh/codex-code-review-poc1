@@ -42,11 +42,15 @@ os.chmod(key_path, 0o600)
 codex_cmd = f"cd {config['workdir']} && codex exec -m gpt-5.2-codex --config model_reasoning_effort=high --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check"
 
 print(f"Running codex in {config['workdir']}...")
-subprocess.run(
+result = subprocess.run(
     ["ssh", "-o", "StrictHostKeyChecking=no", "-i", key_path,
      f"ubuntu@{config['public_ip']}", codex_cmd],
-    check=True
+    capture_output=True, text=True
 )
+print(f"STDOUT:\n{result.stdout}")
+print(f"STDERR:\n{result.stderr}")
+if result.returncode != 0:
+    raise SystemExit(f"Codex failed with exit code {result.returncode}")
 
 os.unlink(key_path)
 print("Codex execution complete")
