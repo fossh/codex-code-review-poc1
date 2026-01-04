@@ -33,7 +33,16 @@ MAX_ATTEMPTS="${MAX_ATTEMPTS:-2}"
 log() { printf '[codex-review] %s\n' "$*"; }
 
 # ---------------------------------------------------------------------------
-# Step 1: Write AGENTS.md
+# Step 1: Setup - Copy context files into repo for Codex access
+# ---------------------------------------------------------------------------
+
+log "Setting up context files"
+mkdir -p "$REPO_ROOT/.github/tmp"
+cp "$CONTEXT_PATH" "$REPO_ROOT/.github/tmp/"
+cp "$TOKEN_PATH" "$REPO_ROOT/.github/tmp/"
+
+# ---------------------------------------------------------------------------
+# Step 2: Write AGENTS.md
 # ---------------------------------------------------------------------------
 
 log "Writing AGENTS.md"
@@ -41,7 +50,7 @@ uv run "$CODEX_DIR/write_agents.py" --output-path "$AGENTS_PATH"
 cp "$AGENTS_PATH" "$REPO_ROOT/AGENTS.md"
 
 # ---------------------------------------------------------------------------
-# Step 2: Review loop with validation
+# Step 3: Review loop with validation
 # ---------------------------------------------------------------------------
 
 VALIDATION_ERROR=""
@@ -89,7 +98,7 @@ for ATTEMPT in $(seq 1 "$MAX_ATTEMPTS"); do
 done
 
 # ---------------------------------------------------------------------------
-# Step 3: Post review to GitHub
+# Step 4: Post review to GitHub
 # ---------------------------------------------------------------------------
 
 if [[ ! -f "$PAYLOAD_PATH" ]]; then

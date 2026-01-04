@@ -5,3 +5,7 @@
 __pycache__/
 tmp/
 .venv/
+
+# Local debug files
+.tmp/
+.local-debug/

@@ -14,7 +14,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOCAL_DEBUG_DIR="$SCRIPT_DIR/.local-debug"
-SSH_KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/codex-key}"
+SSH_KEY_PATH="${SSH_KEY_PATH:-$SCRIPT_DIR/.tmp/codex-key}"
 SSH_USER="ubuntu"
 REMOTE_WORKDIR="/home/$SSH_USER/codex-debug"
 
