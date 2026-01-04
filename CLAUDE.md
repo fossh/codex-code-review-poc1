@@ -53,6 +53,6 @@ s Comments should stay succinct; AGENTS.md already expects block separators, so 
 
 ## Update flow.d2
 - It represents the code flow and architecture using D2 (https://d2lang.com).
-- Run `d2 --watch --port 8080 flow.d2 tmp/flow.svg` to view diagram at localhost:8080.
+- Run `d2 --watch --port 8080 --scale 0.65 flow.d2 tmp/flow.svg` to view diagram at localhost:8080.
 - After any change in requirement or something thats important, update flow.d2.
 - Keep this updated to reflect the codebase.
